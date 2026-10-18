@@ -147,17 +147,24 @@ fn child(executable: &Path) -> Command {
 /// True means the helper owns restart. Diagnostic tools and LaunchAgent must
 /// skip this entry point; the GUI/Host calls it before initializing resources.
 pub fn bootstrap(installed: &str) -> Result<bool> {
-    if std::env::var_os("LRD_UPDATE_HEALTH_ADDRESS").is_some()
-        || std::env::var_os("LRD_UPDATE_SKIP_ONCE").is_some()
-    {
-        return Ok(false);
-    }
     let executable = std::env::current_exe()?;
     let Ok(root) = installation(&executable, false) else {
         return Ok(false);
     };
     let helper = helper_path(&root);
     if !helper.is_file() {
+        return Ok(false);
+    }
+    static LIFETIME: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+    if LIFETIME.get().is_none() {
+        let Some(lease) = runtime_lease(&root)? else {
+            return Ok(true);
+        };
+        let _ = LIFETIME.set(lease);
+    }
+    if std::env::var_os("LRD_UPDATE_HEALTH_ADDRESS").is_some()
+        || std::env::var_os("LRD_UPDATE_SKIP_ONCE").is_some()
+    {
         return Ok(false);
     }
     let platform = Platform::current()?;
@@ -222,6 +229,7 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
     let executable = app_path(&root);
     wait_for_parent(wait_pid)?;
     let result = (|| -> Result<bool> {
+        let lease = runtime_lease(&root)?.ok_or("application is still active; update deferred")?;
         let tx = Transaction::open(&root)?;
         let policy = platform.policy(installed);
         tx.recover(&policy)?;
@@ -254,6 +262,7 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
         health.configure(&mut command)?;
         tx.prepare(&package)?;
         tx.apply(&policy)?;
+        drop(lease);
         let mut running = match command.spawn() {
             Ok(child) => child,
             Err(e) => {
@@ -270,6 +279,8 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
                 if let Err(error) = tx.confirm_health(&policy) {
                     let _ = running.kill();
                     running.wait()?;
+                    let _lease =
+                        runtime_lease(&root)?.ok_or("another app is active; rollback deferred")?;
                     tx.rollback(&policy)?;
                     return Err(error);
                 }
@@ -280,6 +291,8 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
             _ => {
                 let _ = running.kill();
                 running.wait()?;
+                let _lease =
+                    runtime_lease(&root)?.ok_or("another app is active; rollback deferred")?;
                 tx.rollback(&policy)?;
                 fail("new version failed startup; previous version restored")
             }
@@ -293,6 +306,7 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
             }
             // If replacement/recovery itself failed, do not start a partially
             // replaced application. An unwritable installation was never changed.
+            let lease = runtime_lease(&root)?.ok_or("application is active; restart deferred")?;
             match Transaction::open(&root) {
                 Ok(tx) => {
                     tx.recover(&platform.policy(installed))?;
@@ -303,11 +317,51 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
                         .is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied) => {}
                 Err(error) => return Err(error),
             }
+            drop(lease);
             child(&executable)
                 .env("LRD_UPDATE_SKIP_ONCE", "1")
                 .spawn()?;
             outcome.map(|_| ())
         }
+    }
+}
+fn runtime_lease(root: &Path) -> Result<Option<std::fs::File>> {
+    let data = identity::data_directory()?;
+    runtime_lease_at(&data, root)
+}
+fn runtime_lease_at(data: &Path, root: &Path) -> Result<Option<std::fs::File>> {
+    identity::private_directory(data)?;
+    let canonical = std::fs::canonicalize(root)?;
+    let mut normalized = canonical.as_os_str().to_string_lossy().into_owned();
+    if cfg!(windows) {
+        normalized.make_ascii_lowercase();
+    }
+    let name = identity::fingerprint(normalized.as_bytes());
+    let path = data.join(format!("runtime-{name}.lock"));
+    if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+        if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() != 0 {
+            return fail("invalid application lease file");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                return fail("application lease must be private");
+            }
+        }
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path)?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(error) => Err(error.into()),
     }
 }
 fn wait_for_parent(pid: u32) -> Result<()> {
@@ -325,6 +379,9 @@ fn wait_for_parent(pid: u32) -> Result<()> {
         }
         let handle = unsafe { OpenProcess(0x00100000, 0, pid) };
         if handle.is_null() {
+            if std::io::Error::last_os_error().raw_os_error() == Some(87) {
+                return Ok(());
+            }
             return fail("cannot verify old process exit");
         }
         let result = unsafe { WaitForSingleObject(handle, 30000) };
@@ -356,4 +413,32 @@ fn wait_for_parent(pid: u32) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn an_active_app_blocks_replacement_and_exit_releases_the_lease() {
+        let root =
+            std::env::temp_dir().join(format!("lrd-active-{:016x}", crate::random_u64().unwrap()));
+        let app = root.join("app");
+        std::fs::create_dir_all(&app).unwrap();
+        let data = root.join("data");
+        let first = runtime_lease_at(&data, &app).unwrap().unwrap();
+        assert!(runtime_lease_at(&data, &app.join(".")).unwrap().is_none());
+        let other_data = data.clone();
+        let other_app = app.clone();
+        assert!(
+            std::thread::spawn(move || runtime_lease_at(&other_data, &other_app)
+                .unwrap()
+                .is_none())
+            .join()
+            .unwrap()
+        );
+        drop(first);
+        let next = runtime_lease_at(&data, &app).unwrap().unwrap();
+        drop(next);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
