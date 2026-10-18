@@ -57,7 +57,10 @@ impl Health {
             } else {
                 match self.listener.accept() {
                     Ok((mut stream, address)) if address.ip().is_loopback() => {
-                        stream.set_read_timeout(Some(Duration::from_millis(100)))?;
+                        // accept inherits O_NONBLOCK on Darwin. A TCP message
+                        // may arrive in parts even after connect() completed.
+                        stream.set_nonblocking(false)?;
+                        stream.set_read_timeout(Some(Duration::from_millis(250)))?;
                         let mut message = [0u8; 128];
                         if stream.read_exact(&mut message).is_ok()
                             && message[..64] == *self.token.as_bytes()
@@ -109,6 +112,8 @@ mod tests {
         let mut wrong = TcpStream::connect(health.listener.local_addr().unwrap()).unwrap();
         wrong.write_all(&[b'x'; 128]).unwrap();
         let (mut read, _) = health.listener.accept().unwrap();
+        read.set_nonblocking(false).unwrap();
+        read.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
         let mut bytes = [0; 128];
         read.read_exact(&mut bytes).unwrap();
         assert_ne!(&bytes[..64], health.token.as_bytes());
