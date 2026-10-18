@@ -367,8 +367,10 @@ mod tests {
                 assert_eq!(p.payload, vec![i; 256 * 1024]);
             }
             worker.join().unwrap();
+            // This acknowledgement is a bulk-queue barrier. A priority CONFIG
+            // may legitimately overtake the last queued FILE on a faster peer.
             sender
-                .send(Packet::json(wire::CONFIG, &42).unwrap())
+                .send_bulk(Packet::json(wire::CONFIG, &42).unwrap())
                 .unwrap();
             assert_eq!(
                 receiver

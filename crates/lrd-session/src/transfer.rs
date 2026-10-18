@@ -421,6 +421,7 @@ impl Receiver {
             if f.metadata()?.len() != entry.size || hash_reader(&mut f)? != entry.sha256 {
                 return fail("final SHA-256 mismatch");
             }
+            drop(f);
             if let Some(parent) = Path::new(&entry.path).parent() {
                 if !parent.as_os_str().is_empty() {
                     safe_directories(&self.root, parent.to_str().ok_or("invalid parent")?, false)?;
@@ -865,6 +866,8 @@ mod tests {
             std::fs::read(output.join("data.bin")).unwrap(),
             std::fs::read(path).unwrap()
         );
+        // Windows keeps an open capability directory protected from deletion.
+        drop(r);
         std::fs::remove_dir_all(root).unwrap();
     }
     #[cfg(unix)]
@@ -938,6 +941,7 @@ mod durability_tests {
             std::fs::metadata(root.join("out/large.bin")).unwrap().len(),
             1024 * 1024 * 1024 + 123
         );
+        drop(receiver);
         std::fs::remove_dir_all(root).unwrap();
     }
 }
