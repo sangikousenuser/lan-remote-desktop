@@ -25,6 +25,8 @@ def main():
     if image[offset:offset+4] != b'PE\0\0' or struct.unpack_from('<H', image, offset+4)[0] != 0x8664:
         parser.error('Windows x64 PE required')
     folder = ROOT / 'dist/windows-host'
+    if folder.exists():
+        shutil.rmtree(folder)
     folder.mkdir(parents=True, exist_ok=True)
     shutil.copy2(binary, folder / 'lrd-windows-host.exe')
     helper = binary.with_name('lrd-update-helper.exe')
@@ -35,6 +37,7 @@ def main():
     if len(versions) != 1:
         parser.error('one workspace version is required')
     version = versions[0]
+    base_version = version.split('-')[0].split('+')[0]
     shutil.copy2(helper, folder / f'lrd-update-helper-{version}.exe')
     for name in ['Test-Host.ps1', 'Start-Host.ps1', 'Configure-Firewall.ps1']:
         source = ROOT / 'packaging/windows' / name
@@ -65,7 +68,7 @@ def main():
             parser.error('NSIS makensis is required for --installer')
         # Native Windows makensis uses /D; the POSIX cross compiler uses -D.
         prefix = '/' if __import__('os').name == 'nt' else '-'
-        subprocess.run([compiler, prefix+'NOCD', prefix+'V3', prefix+'DPAYLOAD='+str(folder), prefix+'DAPP_VERSION='+version, str(ROOT / 'packaging/windows/installer.nsi')], cwd=ROOT / 'dist', check=True)
+        subprocess.run([compiler, prefix+'NOCD', prefix+'V3', prefix+'DPAYLOAD='+str(folder), prefix+'DAPP_VERSION='+version, prefix+'DPRODUCT_VERSION='+base_version+'.0', str(ROOT / 'packaging/windows/installer.nsi')], cwd=ROOT / 'dist', check=True)
         artifacts.append(ROOT / 'dist/LAN-Remote-Desktop-Windows-Setup.exe')
     (ROOT / 'dist/windows-SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in artifacts))
     for artifact in artifacts:

@@ -5,6 +5,7 @@ import hashlib
 import os
 import pathlib
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,11 @@ def main():
     parser.add_argument("--target", choices=["x86_64-apple-darwin", "aarch64-apple-darwin"], default="x86_64-apple-darwin")
     parser.add_argument("--sdk", type=pathlib.Path, help="explicit macOS SDK root")
     args = parser.parse_args()
+    versions = re.findall(r'^version = "([0-9A-Za-z.+-]+)"$', (ROOT / 'Cargo.toml').read_text(), re.M)
+    if len(versions) != 1:
+        parser.error('one workspace version is required')
+    version = versions[0]
+    base_version = version.split('-')[0].split('+')[0]
     if sys.platform != "darwin":
         parser.error("build on macOS with Xcode Command Line Tools")
     environment = dict(os.environ, MACOSX_DEPLOYMENT_TARGET="10.13" if args.target.startswith("x86_64") else "11.0")
@@ -57,8 +63,9 @@ def main():
             "CFBundleDisplayName": "LAN Remote Desktop",
             "CFBundleExecutable": "lrd-macos-client",
             "CFBundlePackageType": "APPL",
-            "CFBundleShortVersionString": "0.9.0",
-            "CFBundleVersion": "9.0.1",
+            "CFBundleShortVersionString": base_version,
+            "CFBundleVersion": base_version,
+            "LRDVersion": version,
             "LSMinimumSystemVersion": "10.13" if args.target.startswith("x86_64") else "11.0",
             "NSHighResolutionCapable": True,
             "NSPrincipalClass": "NSApplication",

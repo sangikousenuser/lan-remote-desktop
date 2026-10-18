@@ -17,14 +17,17 @@ Unicode true
 !ifndef APP_VERSION
 !error "Pass /DAPP_VERSION=workspace-version"
 !endif
+!ifndef PRODUCT_VERSION
+!error "Pass /DPRODUCT_VERSION=major.minor.patch.build"
+!endif
 Name "LAN Remote Desktop"
 OutFile "LAN-Remote-Desktop-Windows-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\LAN Remote Desktop"
 ShowInstDetails show
 ShowUninstDetails show
-VIProductVersion "0.9.0.1"
+VIProductVersion "${PRODUCT_VERSION}"
 VIAddVersionKey /LANG=1033 "ProductName" "LAN Remote Desktop"
-VIAddVersionKey /LANG=1033 "FileVersion" "0.9.0-alpha.1"
+VIAddVersionKey /LANG=1033 "FileVersion" "${APP_VERSION}"
 VIAddVersionKey /LANG=1033 "FileDescription" "LAN Remote Desktop Host Installer"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "MIT License"
 !insertmacro MUI_PAGE_WELCOME
