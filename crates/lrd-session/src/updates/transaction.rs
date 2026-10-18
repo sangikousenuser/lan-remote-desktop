@@ -207,7 +207,7 @@ impl Transaction {
                     Path::new(&entry.path).parent().unwrap_or(Path::new("")),
                 )?;
                 work.rename(new, &self.root, &entry.path)?;
-                sync(&self.root)?;
+                sync_parent(&self.root, &entry.path)?;
             }
             state.phase = Phase::AwaitingHealth;
             save(&work, &state)
@@ -405,7 +405,7 @@ fn atomic_write(dir: &Dir, path: &str, bytes: &[u8], executable: bool) -> Result
     file.sync_all()?;
     drop(file);
     dir.rename(&temporary, dir, path)?;
-    sync(dir)
+    sync_parent(dir, path)
 }
 fn is_executable(metadata: &cap_std::fs::Metadata) -> bool {
     #[cfg(unix)]
@@ -423,10 +423,19 @@ fn sync(dir: &Dir) -> Result<()> {
     // Unix fsync of directory metadata makes renamed journals durable. Windows
     // file sync_all is used; a directory handle cannot be FlushFileBuffers'd.
     #[cfg(unix)]
-    dir.try_clone()?.into_std_file().sync_all()?;
+    dir.open(".")?.into_std().sync_all()?;
     #[cfg(not(unix))]
     let _ = dir;
     Ok(())
+}
+fn sync_parent(dir: &Dir, path: &str) -> Result<()> {
+    match Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        Some(parent) => sync(&dir.open_dir(parent)?),
+        None => sync(dir),
+    }
 }
 
 #[cfg(test)]

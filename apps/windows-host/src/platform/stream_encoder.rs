@@ -310,7 +310,7 @@ mod tests {
         let mut output = Vec::new();
         let mut pixels = vec![0u8; 640 * 480 * 4];
         for i in 0..32u8 {
-            for (n, pixel) in pixels.chunks_exact_mut(4).enumerate() {
+            for (n, pixel) in pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
                 pixel.copy_from_slice(&[(n % 256) as u8, i, 100, 255]);
             }
             output.extend(encoder.encode(&pixels).unwrap());

@@ -213,4 +213,64 @@ mod tests {
         assert_eq!(fetcher.0.get(), 1);
         assert!(!Path::new("must-not-exist").exists());
     }
+    #[test]
+    fn signed_download_is_staged_once_and_persistent_floor_rejects_older_metadata() {
+        use ring::signature::KeyPair;
+        let (key, mut manifest, bytes) = super::super::tests::fixture();
+        let public: [u8; 32] = key.public_key().as_ref().try_into().unwrap();
+        let policy = super::super::tests::policy(&public);
+        struct Remote {
+            metadata: std::cell::RefCell<Vec<u8>>,
+            package: std::cell::RefCell<Vec<u8>>,
+            calls: std::cell::Cell<usize>,
+        }
+        impl Fetcher for Remote {
+            fn fetch(&self, url: &str, maximum: usize) -> Result<Vec<u8>> {
+                self.calls.set(self.calls.get() + 1);
+                let bytes = if url.ends_with(".json") {
+                    self.metadata.borrow().clone()
+                } else {
+                    self.package.borrow().clone()
+                };
+                if bytes.len() > maximum {
+                    return fail("fake remote bound");
+                }
+                Ok(bytes)
+            }
+        }
+        let remote = Remote {
+            metadata: std::cell::RefCell::new(super::super::tests::sign(&key, &manifest)),
+            package: std::cell::RefCell::new(bytes),
+            calls: std::cell::Cell::new(0),
+        };
+        let root = std::env::temp_dir().join(format!(
+            "lrd-download-{:016x}",
+            crate::random_u64().unwrap()
+        ));
+        let first = check_and_stage(&remote, &policy, &root).unwrap();
+        assert!(first.join("UPDATE_STAGED").is_file());
+        assert_eq!(check_and_stage(&remote, &policy, &root).unwrap(), first);
+        assert_eq!(remote.calls.get(), 3); // second check does not download the package
+        manifest.version = "0.9.1".into();
+        *remote.metadata.borrow_mut() = super::super::tests::sign(&key, &manifest);
+        assert!(check_and_stage(&remote, &policy, &root).is_err());
+        assert_eq!(remote.calls.get(), 4);
+        manifest.version = "2.0.0".into();
+        *remote.metadata.borrow_mut() = super::super::tests::sign(&key, &manifest);
+        remote.package.borrow_mut()[8] ^= 1;
+        assert!(check_and_stage(&remote, &policy, &root).is_err());
+        let floor: String = serde_json::from_slice(
+            &crate::identity::read_private(&root.join("highest-staged.json"), 1024).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(floor, "1.0.0");
+        assert_eq!(
+            std::fs::read_dir(&root)
+                .unwrap()
+                .filter(|e| e.as_ref().unwrap().file_type().unwrap().is_dir())
+                .count(),
+            1
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
