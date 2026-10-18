@@ -1,0 +1,7 @@
+{
+  "hardware_model": "Mac17,9",
+  "gpus": [
+    "Apple M5 Pro"
+  ],
+  "scope": "development Mac only; no High Sierra or Windows runtime validation"
+}

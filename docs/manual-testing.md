@@ -1,0 +1,90 @@
+# 起動・実機試験 — 0.9.0-alpha.1
+
+Windows 11のログイン済みコンソールとMacをEthernetで接続してください。Wi-Fiの経路/DNSは変更しません。High Sierra実機は未用意です。
+ローカル映像PoCの試験済みというユーザー報告を受け、接続機能の実装へ進めました。以下の新しいネットワーク機能の合格を意味するものではありません。
+
+## 初回起動
+
+Windows用ZIPを展開し、PowerShellでそのフォルダーを開きます。設定変更不要のポータブル版を先に確認できます。
+
+```powershell
+.\lrd-windows-host.exe --interfaces
+.\lrd-windows-host.exe --serve --interface 12 --auto
+```
+
+スクリプト実行をOSの方針で拒否された場合も、上記のexeコマンドを直接使えます。実行ポリシー全体を無効化する必要はありません。
+
+`12`を表示されたEthernet番号に置換します。`Start-Host.ps1`でも番号を対話選択できます。`--auto`は同じMACアドレスのNICを記録し、IPv4/リンク変化後に待ち受けを再構築します。別のNICやWi-Fiへ回避しません。
+Hostのウィンドウは閉じず、終了は通知領域アイコンの「Hostを終了」を使います。ログイン前、ロック中、UACセキュアデスクトップ、DRM画面は対応範囲外です。
+
+Windows Firewallに止められた場合、管理者PowerShellから、使用するNICだけに限定した規則を追加できます。初期起動時のOSダイアログで全インターフェースへ許可するより、こちらの規則を使ってください。
+
+```powershell
+.\Configure-Firewall.ps1 -InterfaceIndex 12
+# 同じ実行ファイル用の規則を取り消す
+.\Configure-Firewall.ps1 -InterfaceIndex 12 -Remove
+```
+
+規則は実行ファイルの絶対パス、指定した物理Ethernet、同一サブネット、TCP 47990 / UDP 47991の受信だけを対象にします。IP/DNS/ゲートウェイは変更しません。規則は実行ファイルのハッシュ別に名前を付けます。更新時は旧規則を旧版のスクリプトから解除してください。
+
+MacのCPUに合う.appを開き、Ethernetを選んで「探索」。候補を選び「接続」します。手入力はWindowsのIPv4、または `IP:47990`。探索結果は未認証です。
+初回は両端の6桁コードが一致することを確認して許可します。2回目以降もMacで毎回許可します。証明書が変わったら同じ端末として自動復帰しません。
+MacでEthernetがない案内が出る場合はリンクとIPv4を確認します。DHCP/Link-Localで接続できない場合の自動固定IPヘルパーは未実装です。手動設定する場合も、直結Ethernetにデフォルトゲートウェイ/DNSを追加しないでください。
+
+## 操作
+
+- 接続承認後に全画面。マウスを上端へ動かすと操作バーが表示されます。Control+Command+Fで通常ウィンドウへ戻します。
+- **Control+Option+Command+Esc**: 入力と相対マウスを解放。「入力を再取得」で戻れます。別アプリにフォーカスした場合も解放します。
+- **Control+Option+R**: 相対マウス。未確認のRaw Inputゲームへの動作保証はありません。
+- **Control+Option+M** / 表示メニュー: モニターと対応解像度を選択。Macの物理/論理画素数を表示し、映像は縦横比を維持します。
+- かな→IME ON、英数→OFF。Commandは初期設定でCtrl、表示メニューでWindowsキーへ変更できます。物理JIS/USを判別します。Windows側のキーボード配列も確認してください。
+- 音声は「Windowsのみ」「両方」。Macのみは、取得音声を壊さない出力隔離が未検証のため制限を表示します。物理スピーカー側の音量調整は利用できます。
+- テキスト/PNGのクリップボードを同期。表示メニューで停止できます。上限4MiB、画像8192px/32MP以内。転送内容をログへ保存しません。
+- 専用ファイル転送画面から最大4件のファイル/フォルダーを選択。Macの転送画面または映像画面、Windowsの転送画面へのドロップにも対応。ドロップ位置のExplorerフォルダーへ直接配置する機能ではありません。
+- Windowsから送る場合は通知領域メニューを使用。コンソールの `send C:\path\folder` / `cancel` も使用できます。
+- 受信先は両端の `Downloads/LAN Remote Desktop`。既存の異なる内容を上書きしません。同一ハッシュの完成ファイルは再送完了として扱います。
+- 手動切断は自動復帰しません。予期しない通信停止時のみ同じ鍵・同じWindowsセッションへ120秒復帰を試みます。
+
+## 試験記録
+
+試験時のアプリZIPのSHA-256、両OS/CPU/GPU、NIC/1GbEリンク、日時を記録します。画面・キー入力・クリップボード内容・秘密鍵・復帰ticketは報告へ含めないでください。
+
+| 項目 | 操作と合格条件 |
+|---|---|
+| 承認 | 初回の片側拒否では画面/入力/ファイルを開始しない。再接続ごとにMac確認。別鍵では自動復帰しない |
+| Ethernet固定 | Wi-Fiを有効にしたまま通信。Ethernetを抜くと映像/入力を停止し、Wi-Fi上で継続しない。NICを差し替えて勝手に接続しない |
+| 映像 | 各モニターで上下、色、文字、動画を確認。hardware MFT選択後に実フレーム出力を確認。未対応時はsoftware fallbackを確認 |
+| 入力 | JIS/USの英数字・記号・修飾キー、かな/英数、Command+C/V、ドラッグ、ホイール、緊急解放。ゲームはアプリ別に確認 |
+| 復帰 | ケーブルを抜き30秒で戻す。Mac承認なしで復帰、古い押下が残らない。121秒後は復帰不可。手動切断は自動復帰しない |
+| PC排他 | 別Mac、別Windowsログインユーザーから同時操作を試み、片方だけが操作可能。猶予中も他端末は操作不可 |
+| 表示 | 対応モード変更→手動切断で復元。30秒復帰中は維持、121秒で復元。接続中にローカルで変更した設定を上書きしない。Host強制終了→次回起動の復元記録照合 |
+| 音声 | サンプルレート/デバイス変更を含め、Windowsのみ/両方、音途切れ、音映像ずれを確認。長時間の蓄積遅延がないこと |
+| Clipboard | 両方向の日本語、PNG、停止、サイズ超過、同一内容でのループなし。接続前/切断後は同期しない |
+| ファイル | 各方向で1GiB超、空ファイル、空フォルダー、階層、日本語、同名競合。途中でLAN断/アプリ再起動してSHA-256一致を確認。元ファイル変更時は再選択要求 |
+| Drag & Drop | Finder→Macの転送画面/映像画面、Explorer→Windowsの転送画面。受信は固定Downloads。任意アプリ直接OLEは未対応 |
+| 自動起動 | MacをApplicationsへ移してアプリメニューから登録、再ログイン→選択Ethernet発見時に起動と確認。拒否後同じリンクで繰り返さない。解除後は起動しない |
+| Installer | 標準ユーザーPer-user、管理者承認Per-machine、混在モード拒否、更新前Host終了、アンインストール、ユーザー鍵/転送先保持 |
+| 長時間 | 実際のLANで1時間。入力→光学表示遅延、表示FPS、CPU/メモリ、音声ずれ、再接続、受信SHA-256を記録 |
+
+現時点ではQUIC/TLS+UDP比較、固定IPヘルパー、自動更新の取得/適用/rollbackの受入試験は実装待ちです。High Sierraでの起動とGPU/CPU描画はRosettaでは代替できません。
+
+## ローカル診断
+
+WindowsのローカルDXGI:
+
+```powershell
+.\lrd-windows-host.exe --list-monitors
+.\lrd-windows-host.exe --probe --seconds 5
+# 画面内容をファイルへ保存する明示操作
+.\lrd-windows-host.exe --capture-video capture-test.mp4 --seconds 5
+```
+
+`Test-Host.ps1`は数値のJSONを保存します。Macの映像テストは人工テスト映像、診断保存は数値だけです。
+
+```sh
+python3 scripts/smoke-macos.py 'dist/aarch64-apple-darwin/LAN Remote Desktop.app/Contents/MacOS/lrd-macos-client'
+# 転送エンジンの1GiB超中断再開を単体で確認（数分・数GBの一時空き容量）
+cargo test --locked -p lrd-session large_file_over_one_gib -- --ignored --nocapture
+```
+
+本人の映像や音声を記録しない合成テストで先に確認してください。これらはWindows↔Macの実LAN受入試験とは別です。

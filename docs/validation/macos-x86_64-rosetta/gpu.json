@@ -1,0 +1,16 @@
+{
+  "remote_connection_tested" : false,
+  "hardware_decode" : 1,
+  "renderer" : "Metal",
+  "elapsed_seconds" : 5.184543416951783,
+  "schema" : 1,
+  "decode_or_gpu_errors" : 0,
+  "error" : "",
+  "os" : "Version 27.0.1 (Build 26A434)",
+  "rendered_frames" : 293,
+  "architecture" : "x86_64",
+  "render_fps" : 56.514137588661058,
+  "decoded_frames" : 300,
+  "test" : "local_h264_decode_render",
+  "decode_fps" : 57.864304698287775
+}

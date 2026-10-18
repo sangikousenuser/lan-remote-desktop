@@ -1,0 +1,371 @@
+{
+  "schema": 1,
+  "version": "0.9.0-alpha.1",
+  "generated_utc": "2026-10-17T17:00:49.628511+00:00",
+  "source_file_sha256": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "6fbc614f530d87003ac3b3e1859a6ffd9aefce243fc125f5436d8e9c73f6677a"
+    },
+    {
+      "path": ".github/workflows/release-candidate.yml",
+      "sha256": "5b899c8e293d43b214455ef60998f808b4697de22e52b7b21b3304fd65708746"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "9c3f7093242a985d4ac41264fd037c3f52a1187d857177eb801c65652c0966ed"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "03bd9aec0a87ba87372d16b4d132a880d049ae684b958a7a07c515f6ff8bb060"
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "00a34cc0f7ba15eaa7c20cf76fb75c5491051822aeb6a51f96841fae0c3c6624"
+    },
+    {
+      "path": "README.md",
+      "sha256": "9409db7856cba33c0e566ae0c31b40ebd6134e69a021dd5198c42b7f077454d8"
+    },
+    {
+      "path": "apps/macos-client/Cargo.toml",
+      "sha256": "0fcfefc4eda4c5b226cbefcf26f0f342f1ef1b2e32dbab4bec503d672fc6598e"
+    },
+    {
+      "path": "apps/macos-client/build.rs",
+      "sha256": "5711da77896de41f7852352c0819a0167ac2e5735fbc38386f5388009da18a47"
+    },
+    {
+      "path": "apps/macos-client/native/agent-ui.inc",
+      "sha256": "6410579a3d23ac61466e64a48008ea82224b63bf9c479e96502baef01ef03901"
+    },
+    {
+      "path": "apps/macos-client/native/audio.inc",
+      "sha256": "6b184a635ac921500603ad2270cc40f9640e093ba154c18ddeda205f64f4a4f0"
+    },
+    {
+      "path": "apps/macos-client/native/client.m",
+      "sha256": "55672c99bd23cf486b6c36174e79c9527ed8ad9646753ff7982c83632fce7121"
+    },
+    {
+      "path": "apps/macos-client/native/clipboard-ui.inc",
+      "sha256": "583e51bacaf7bbcb08124c36f955edd1c20c0ee6120949cf9f6b6944f405c3a0"
+    },
+    {
+      "path": "apps/macos-client/native/display-ui.inc",
+      "sha256": "cd29fa13aa3f6d554dffd82932f1561b27738bf76331b86bd895a07aecd2a708"
+    },
+    {
+      "path": "apps/macos-client/native/file-drop.inc",
+      "sha256": "46a3d94716ea970a08d4260d13a8d75ab08b06d7417013dd1c290eaed2011a29"
+    },
+    {
+      "path": "apps/macos-client/native/network-support.inc",
+      "sha256": "eb0d0818244cc88ef15a4e20dc6895942b25a6f482e333d525690b3217d20a78"
+    },
+    {
+      "path": "apps/macos-client/native/network-ui.inc",
+      "sha256": "1d14aae344f9b7dd819df12c43e4400c53cace8356b18e6f87bc4c2506c14340"
+    },
+    {
+      "path": "apps/macos-client/native/transfer-ui.inc",
+      "sha256": "56760a2ac32fc29590f231c66075db13334781e43f6b733dbeeb743689192166"
+    },
+    {
+      "path": "apps/macos-client/src/agent.rs",
+      "sha256": "fa10dae1132b3da81a8e7bf35a41fffa4a264b7a4ed31eb5474eedf929f48f7e"
+    },
+    {
+      "path": "apps/macos-client/src/main.rs",
+      "sha256": "232c2c70f47cd69fa34e69336d27003258bfb69ab54cd7af0d62ed826080bd15"
+    },
+    {
+      "path": "apps/macos-client/src/network.rs",
+      "sha256": "e4da7afd3168be92ce0354d179603694a410f35d3b183a75d2591576517d79a9"
+    },
+    {
+      "path": "apps/windows-host/Cargo.toml",
+      "sha256": "c8e8ad69fa49f31027f449a9db1a3f35fee3c0e11f8e93a945989ead62df40aa"
+    },
+    {
+      "path": "apps/windows-host/src/main.rs",
+      "sha256": "3d960064815675d37f2f81882e1a87162caf2d8dcf9da00e741e117c243923ad"
+    },
+    {
+      "path": "apps/windows-host/src/platform/audio.rs",
+      "sha256": "201773dd25eed3f74cd53e2f9133aae89bf5f58a448d6bf8327e706d124b671b"
+    },
+    {
+      "path": "apps/windows-host/src/platform/clipboard.rs",
+      "sha256": "0f720e094fd05eee73f812e346d38a21717c7d0c78faeadfc1e608592b315a13"
+    },
+    {
+      "path": "apps/windows-host/src/platform/display.rs",
+      "sha256": "aa8ed52a1a0bb0b6d4e27d3decfb796ff0a24fa7aebcb4b5674ce162a4b67476"
+    },
+    {
+      "path": "apps/windows-host/src/platform/encoder.rs",
+      "sha256": "40116d84586151a3dd7baa7a1421019183748b34e7d39e95c478c1db5cca7484"
+    },
+    {
+      "path": "apps/windows-host/src/platform/input.rs",
+      "sha256": "f4ecaa14caee0a779ed7e562bd2053cea718e05483cee7a1b6f19d9e23477ee1"
+    },
+    {
+      "path": "apps/windows-host/src/platform/remote.rs",
+      "sha256": "0a01834638e28a57e96831d51444560ca8fc0312148067b04a306b6e88201b1a"
+    },
+    {
+      "path": "apps/windows-host/src/platform/stream_encoder.rs",
+      "sha256": "eacca08cbde29c9b3cfe036b4f731d2fe0f3095f14f0f3c938e727c269beab77"
+    },
+    {
+      "path": "apps/windows-host/src/platform/tray.rs",
+      "sha256": "6d6b467cb412792fc9a7aa4a2a45e2e0292b3d29b86378d140f4f81bfe038f10"
+    },
+    {
+      "path": "apps/windows-host/src/platform.rs",
+      "sha256": "d2e47516b57a8995cb6cd3b896822e50fca19e483dbcf9b1399289287a475f18"
+    },
+    {
+      "path": "assets/README.md",
+      "sha256": "5141f7244a678254027974d59ffe83250622875ff2dfb98009a0647a3c8daebd"
+    },
+    {
+      "path": "assets/test-frame.h264",
+      "sha256": "c904bbccd86ccce78a34cd76a3b229f1c127e2e9e7950eaaccdae74c6fd53647"
+    },
+    {
+      "path": "assets/test-pattern.mp4",
+      "sha256": "c0ce8f18bfe45be934be0efb3925f588c0d4b67c47fa054888d5be4ba5d14ab5"
+    },
+    {
+      "path": "crates/lrd-common/Cargo.toml",
+      "sha256": "2a2164fb0e0023901ae0c054d9f86174f745995ecdf54061e696d403fed794b8"
+    },
+    {
+      "path": "crates/lrd-common/src/lib.rs",
+      "sha256": "8cbe2ecbc9267d37794ca947a1baeea7c0fcdc5d661ca11f0124a4c2abf8f819"
+    },
+    {
+      "path": "crates/lrd-common/src/session.rs",
+      "sha256": "16513f215b8406dca1c62a2b2343a7397e7d65a51b657ff936bdcb235029dd66"
+    },
+    {
+      "path": "crates/lrd-common/src/telemetry.rs",
+      "sha256": "53c4eae2436305f4d2f73da20dc7bbcdc1a3509a753c336dd6d70ef7112e3282"
+    },
+    {
+      "path": "crates/lrd-protocol/Cargo.toml",
+      "sha256": "29c5b89dad7a4a9ec3d05f3ea5eafb8556c57a17cbf69439d5d8904ca1fba8b3"
+    },
+    {
+      "path": "crates/lrd-protocol/src/lib.rs",
+      "sha256": "cb188b0d62f501e1041674ff02815b0cbac924e1a31c407977feb87ec7858028"
+    },
+    {
+      "path": "crates/lrd-protocol/src/media.rs",
+      "sha256": "805605985ad475b5aaee14a30aabbc9e4891c6f4090874edeabceeeb34248cb4"
+    },
+    {
+      "path": "crates/lrd-session/.gitignore",
+      "sha256": "44c92e3a70ad3307b7056871c2bdb096d8bfa9373f5bf06a79bb6324a20ff2fb"
+    },
+    {
+      "path": "crates/lrd-session/Cargo.toml",
+      "sha256": "7a093046c99f127d9cad886e1d1e7556716ef943cbffa30c8d04d2c2385a7065"
+    },
+    {
+      "path": "crates/lrd-session/src/audio.rs",
+      "sha256": "097b8347714c952d056c0b246866d87f868fd124fe5acf0367da8095125dda1a"
+    },
+    {
+      "path": "crates/lrd-session/src/channel.rs",
+      "sha256": "1d840ea59cc02831684b52b368efb045dde347cf76179ac6a9ca13622a5d7819"
+    },
+    {
+      "path": "crates/lrd-session/src/clipboard.rs",
+      "sha256": "d195fda910052b73b998c52d3c320edfba19bc5ccf6448fef4f87e7d5907c6e8"
+    },
+    {
+      "path": "crates/lrd-session/src/color.rs",
+      "sha256": "25a2e793fcb50f210fc58dca51fcdb57e762b6f493fce69e033c4192aa38df28"
+    },
+    {
+      "path": "crates/lrd-session/src/file_worker.rs",
+      "sha256": "15c24a1f4ed4131178449368bbe1db3f34649b7e1ba82b04872e93c9f49ddb29"
+    },
+    {
+      "path": "crates/lrd-session/src/h264.rs",
+      "sha256": "91b369f9ee083224e1becac8e4564fdb2b7d3bf800dabc1617c90e5d43c9a58c"
+    },
+    {
+      "path": "crates/lrd-session/src/identity.rs",
+      "sha256": "628668d739db238cfa93a1cf16fd18cb32b9ea878147ae0177a03dceec8a436c"
+    },
+    {
+      "path": "crates/lrd-session/src/lib.rs",
+      "sha256": "6c25ea10eed338a2955d4e97d7f24309ace1c86ad99bcd0d5462d60403d790a8"
+    },
+    {
+      "path": "crates/lrd-session/src/network.rs",
+      "sha256": "6c2a097f53d2184c1f7a06b9203a8a9e63221a27c39c0203a6a4bc2ca3fe6906"
+    },
+    {
+      "path": "crates/lrd-session/src/quality.rs",
+      "sha256": "f76fbc44674ab9a90c747e2e2c2d1ecf66bffa7293297dff675077df75b2101a"
+    },
+    {
+      "path": "crates/lrd-session/src/resume.rs",
+      "sha256": "db8baf4c91ccc6b46f1417531507738b2c0d8e46a7c1a3e3ad504fd6b82d8053"
+    },
+    {
+      "path": "crates/lrd-session/src/tls.rs",
+      "sha256": "0e26e81c91e6db8413b1ef47ef96796c1b30719f8a0e5a2b564195dd1799010e"
+    },
+    {
+      "path": "crates/lrd-session/src/transfer.rs",
+      "sha256": "42d8a2a59c9de83b93aa090f832079d9aa4966909be452a3e9236359b50c7943"
+    },
+    {
+      "path": "crates/lrd-session/src/updates.rs",
+      "sha256": "fc40e7f5c4b86cad2a58c5181e3215b033a34e6044349b95015bf4cbe7023e7b"
+    },
+    {
+      "path": "crates/lrd-session/src/wire.rs",
+      "sha256": "9b0ddac7e33b7c8483f274c995d9ca08de5f4a31d0345204608f65daec3d93ef"
+    },
+    {
+      "path": "docs/manual-testing.md",
+      "sha256": "1e26d15e526f1c4b519fb1b1dd02bbb68e3f8feb7aff00f6fcfe5812d2cf6c24"
+    },
+    {
+      "path": "packaging/macos/README.md",
+      "sha256": "68b83564c23fd5888c7b6bc908e2654b327b02d24aed91c85e1e15a9daf6f25b"
+    },
+    {
+      "path": "packaging/macos/package.py",
+      "sha256": "b5bdb128c71cb8eb10635272e07440cb1e864c858f93341559a595717d28a95b"
+    },
+    {
+      "path": "packaging/macos/test_verify_binary.py",
+      "sha256": "4cf4d6a69d56a9d89eb956472f8a7c46c251c616771a16c5b9a4307a6e36a75b"
+    },
+    {
+      "path": "packaging/macos/verify_binary.py",
+      "sha256": "5a76a9015c070bc2c4a1336b360c9b617ebc9795b05bbd50912daa7daed5a9a4"
+    },
+    {
+      "path": "packaging/windows/Configure-Firewall.ps1",
+      "sha256": "d8022c23ef27e20f9fca319c58cacfe4c476fd59c2ba166eb743887080434128"
+    },
+    {
+      "path": "packaging/windows/README.md",
+      "sha256": "6eaf68e64ee60f7a3747227b8c4369b2ddccac489a10a192c7e9b089a9851ac3"
+    },
+    {
+      "path": "packaging/windows/Start-Host.ps1",
+      "sha256": "1cbfa86ef548a79e932fe4a63816c8372422902bc09382ad2ea7e0354613a585"
+    },
+    {
+      "path": "packaging/windows/Test-Host.ps1",
+      "sha256": "37c4b44384ba0b8f49de9cd268352abc392b20a1433f6a05a7b017b2e81a37cb"
+    },
+    {
+      "path": "packaging/windows/installer.nsi",
+      "sha256": "ad140cefb300f73ae9a43c54366a25b8f19510130a878df753d6c1a28754a515"
+    },
+    {
+      "path": "packaging/windows/package.py",
+      "sha256": "4f17506755da376876686653583e971db62f52407afa77cd376046274c824b0b"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "2ad6f15416572b4836585087f1d4abc53b8fa2dbd616f8dacfaa587ed6714228"
+    },
+    {
+      "path": "scripts/smoke-macos.py",
+      "sha256": "d0029c4ad3e63b67180d7acdc0491a46dddd40b26d4669ecfae0a724763a4766"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "dist/LAN-Remote-Desktop-Windows-Host.zip",
+      "bytes": 4465719,
+      "sha256": "e82fab8efb1fbd37fa7ff10d75939c345a46839870dfa8cb45506858fb90d05d"
+    },
+    {
+      "path": "dist/LAN-Remote-Desktop-Windows-Setup.exe",
+      "bytes": 4540519,
+      "sha256": "26727e9f3f2fc70e09b590c525a4833bff54853ad66acf9b4265bd2c5b827760"
+    },
+    {
+      "path": "dist/aarch64-apple-darwin/LAN-Remote-Desktop-macOS-client.zip",
+      "bytes": 7353737,
+      "sha256": "4f893a567b8557ef644d370e7046cda0bbf78f01678bc5c7e8a48a57f2cab23e"
+    },
+    {
+      "path": "dist/x86_64-apple-darwin/LAN-Remote-Desktop-macOS-client.zip",
+      "bytes": 7443588,
+      "sha256": "3061570667e6002facf62b6e5b4d3fd7066da8fb315ba69aeb72c7f1073b8ae6"
+    }
+  ],
+  "windows_dll_imports": [
+    "KERNEL32.dll",
+    "advapi32.dll",
+    "api-ms-win-core-synch-l1-2-0.dll",
+    "api-ms-win-core-winrt-error-l1-1-0.dll",
+    "api-ms-win-crt-environment-l1-1-0.dll",
+    "api-ms-win-crt-heap-l1-1-0.dll",
+    "api-ms-win-crt-locale-l1-1-0.dll",
+    "api-ms-win-crt-math-l1-1-0.dll",
+    "api-ms-win-crt-private-l1-1-0.dll",
+    "api-ms-win-crt-runtime-l1-1-0.dll",
+    "api-ms-win-crt-stdio-l1-1-0.dll",
+    "api-ms-win-crt-string-l1-1-0.dll",
+    "bcrypt.dll",
+    "bcryptprimitives.dll",
+    "d3d11.dll",
+    "dxgi.dll",
+    "iphlpapi.dll",
+    "kernel32.dll",
+    "mfplat.dll",
+    "mfreadwrite.dll",
+    "ntdll.dll",
+    "ole32.dll",
+    "oleaut32.dll",
+    "propsys.dll",
+    "shell32.dll",
+    "user32.dll",
+    "userenv.dll",
+    "ws2_32.dll"
+  ],
+  "checks": {
+    "rust_tests": {
+      "passed": 49,
+      "ignored_in_regular_suite": 1,
+      "large_file_test_separately_passed": true,
+      "large_file_bytes": 1073741947,
+      "large_file_seconds": 182.47,
+      "large_file_scope": "local transfer engine, not LAN"
+    },
+    "clippy_macos": true,
+    "clippy_windows_gnu": true,
+    "packaging_tests_passed": 3,
+    "macos_arm64_smoke": true,
+    "macos_intel_rosetta_smoke": true,
+    "windows_installer_compiled": true,
+    "windows_live_runtime_tested": false,
+    "high_sierra_hardware_tested": false,
+    "live_lan_tested": false,
+    "dependency_vulnerabilities": 0,
+    "dependency_warnings": {},
+    "artifact_hashes_and_members_verified": true,
+    "github_ci_executed": false,
+    "stable_release_ready": false,
+    "macos_ui_final_launch": true,
+    "macos_unconnected_send_rejected": true,
+    "macos_selected_ethernet_available": false
+  },
+  "scope": "Local validation snapshot before GitHub publication; later commits have separate CI evidence."
+}

@@ -1,0 +1,11 @@
+[package]
+name = "lrd-macos-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lrd-common = { path = "../../crates/lrd-common" }
+lrd-session = { version = "0.9.0-alpha.1", path = "../../crates/lrd-session" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"

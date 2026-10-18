@@ -1,0 +1,53 @@
+# 実装状況と検証記録
+
+更新: 2026-10-19。バージョン: **0.9.0-alpha.1**。
+
+ローカル映像PoCから、Ethernet上の認証済み画面・入力・音声・ファイル転送を行う実装へ進めました。
+**仕様全体は未完成です。** 実装済みのコードと、対象実機での合格は区別します。
+ユーザーからWindowsでの先行テスト済みの報告を受けていますが、新規セッション機能の実行結果・数値はまだ受領していません。High Sierra実機は利用不可です。
+
+## 実装
+
+| 項目 | 実装内容 | まだ必要なこと |
+|---|---|---|
+| Ethernet/探索 | 物理有線を選択、送受信NIC/IPv4拘束、同一subnet限定、UDP broadcast、NIC監視、Windows weak-host/forwarding拒否 | 両OS/複数NICでの実パケット確認。DHCP/Link-LocalそのものはOSの機能 |
+| 端末認証 | TLS 1.3相互署名、exporter確認コード、両端初回承認、fingerprint保存、Mac毎回承認 | 実機で拒否/鍵変更/非対称登録を操作確認 |
+| Host排他 | PC全体Global mutex、所有thread、ユーザーセッション識別、猶予中のlease保持 | Windows複数ログイン/別Mac競合。待受ポートは共通で、複数ユーザーHost同時待受には制約あり |
+| 映像 | DXGI staging、NV12、非同期HW H.264 MFT優先＋software fallback、NAL配信、VT/Metal/CPU描画、keyframe要求、静止時の再同期 | GPU surface共有、実HW MFT互換、60fps/低遅延・色・長時間試験 |
+| 入力 | SendInput、JIS/US物理検出、かなON/英数OFF、Command変換、絶対/相対マウス、緊急解放、世代/順序検査 | Windows IME/配列/ゲーム別試験。secure desktop/UIPI制約 |
+| 再接続 | 120秒、同じ証明書・同じWindows session・secret ticket、TLS鍵/入力世代更新、手動切断抑止、初期化失敗で期限維持 | 実際の抜線、NICアドレス変更、121秒、復帰前後の入力試験 |
+| モニター/解像度 | 複数モニター選択、対応モード列挙、Mac物理/論理画素表示、比率維持、変更前journal、条件付き復元、猶予後/再起動時照合 | Windows表示ドライバーごとの変更/強制終了/手動変更試験 |
+| 品質/指標 | encode負荷/RTT/queueのヒステリシス、fps/bitrate制御、数値診断、送受信量、RTT、描画/復号fps | 実入力→光学表示遅延、損失/画面内容/入力頻度を使う品質制御の完成、ログ回転 |
+| 音声 | WASAPI loopback、PCM多ch縮約、CoreAudio、bounded queue、Windowsのみ/両方、Macのみ制限案内 | Opus、デバイス変更/音映像同期/長時間実測。Windows muteで代用しない |
+| Clipboard | 双方向UTF8/PNG、SHA-256、サイズ/画素制限、反射抑制、停止 | Windows/macOSの各アプリで実動作確認 |
+| 転送 | 専用UI、双方向ファイル/フォルダー、階層/複数選択、進捗/取消、SHA-256、1MiB chunk、永続manifestと再開、capability受信、非上書き完成配置 | 実LANの両方向1GiB超、遅いディスク、アプリ再起動の受入試験。不要な部分データの整理UI |
+| Drag & Drop | Finder→Mac転送/映像画面、Explorer→Windows専用画面から固定受信先へ転送 | 任意Explorer/Finder位置への直接リモートOLE/File Promise連携 |
+| 常駐/配布 | Windows tray/専用転送画面、同一NICで待受再構築、NSIS Per-user/Per-machine、任意のログイン時起動、Mac LaunchAgent登録/解除、.app/ZIP | 両Windowsモードのインストール/アンインストール実機、High Sierra LaunchAgent |
+| 更新 | Ed25519署名・Stable version・CPU/OS/protocol・HTTPS URL・hash・パス制限のvalidator、private staging | 実アプリへの統合、HTTPS取得、次回起動前helper、backup/起動確認/rollback、署名運用 |
+| Q50 | 暫定TLS/TCP live path。別codecとmedia assemblerの単体試験 | QUIC DATAGRAMとTLS+AEAD UDP両候補の実装・同条件ベンチ。最終方式は未選定 |
+| 固定IP | OSのDHCP/Link-Localを利用。Firewall限定設定スクリプトを同梱 | 狭い管理者helper、snapshot/rollback、衝突検出、両端ローカルウィザード |
+| CI/正式公開 | 3OS fmt/clippy/tests/build、Mach-O検査、alpha候補生成設定、正式公開を拒否するゲート | 初回Actions結果の確認、実機ゲート、署名/公開helperの完成 |
+
+## ローカルで確認したこと
+
+開発端末: Mac17,9 / Apple M5 Pro、macOS 27.0.1。Rust 1.99.0。Windows x64はMinGW cross build、Intel Mac版はcross build + Rosettaです。
+
+- Rust: common 9件、protocol 14件、session 25件、Mac TLS→VideoToolbox 1件、合計49件の通常テスト。
+- セッション試験: 相互TLS・確認コード一致、片側拒否時の両方の登録禁止、別証明書pin拒否、双方向の256KiB×8パケットを8KiB socket bufferで同時送受信、期限/世代/サイズ/パス/署名異常。
+- 別途、ignored指定の1GiB超テストを実行済み。1GiB+123bytesを512チャンクで中断し、Receiverを作り直して残りを受信、全体SHA-256一致。182.47秒。この結果は転送エンジンのローカル試験であり実LAN試験ではありません。
+- Macの実アプリ: Ethernet不在の案内、専用転送画面、ローカル映像、全画面バー、Control+Command+Fによる解除。
+- `cargo fmt` / 両対象のclippy、通常テスト、PE/Mach-Oビルド、Intel/arm64最低OS/依存検査、Mac GPU/CPUと異常系smoke、NSIS生成、依存監査の結果は `docs/validation/` に保存します。
+- rustlsを0.23.46へ更新。検出された旧版の公開advisoryを解消しました。署名用秘密鍵や公開Releaseは作成していません。
+
+現在のMacにはIPv4設定済みEthernetが検出されません。対象のWindows機への実接続は行えていません。
+High Sierraでの互換性は最低OSのロードコマンド検査やRosettaでは代替できません。
+対応GPUでの1080p60/50ms目標を達成したとする実測値はありません。
+
+## 次の受入ゲート
+
+新しいWindows ZIPの `Start-Host.ps1` とMacアプリで実際に接続し、初回承認→映像/入力→音声/clipboard→抜線復帰→モニター変更→両方向転送を確認します。[手順](manual-testing.md)に結果欄を定義しています。
+並行して、Q50、固定IP helper、更新取得/適用/rollback、直接OLE転送の残り実装が必要です。正式版としての公開ゲートは解除しません。
+
+## GitHub公開
+
+公開先は https://github.com/sangikousenuser/lan-remote-desktop 。ユーザーの指定によりPublicリポジトリへソースを登録します。実行ファイル、端末鍵、個人用の診断JSONはGitに登録しません。Windowsでの新しい接続試験は「まだ試せない」との回答のため未実施のままです。Actionsの結果は別途記録します。

@@ -1,0 +1,22 @@
+/target/
+/dist/
+__pycache__/
+.DS_Store
+*.log
+*.pdb
+*.dSYM/
+*.app/
+*.exe
+*.msi
+*.tmp
+**/.env
+*.key
+*.pem
+secrets/
+
+# Per-user credentials/runtime state (never distribute)
+*.pk8
+device.der
+paired.json
+.lrd-partials/
+lrd-video-diagnostics.json

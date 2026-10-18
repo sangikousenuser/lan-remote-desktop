@@ -1,0 +1,22 @@
+[package]
+name = "lrd-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cap-std = "=3.4.5"
+netdev = { version = "=0.46.2", default-features = false }
+rcgen = "=0.13.2"
+ring = "=0.17.14"
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std"] }
+semver = "=1.0.28"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "=0.10.9"
+socket2 = { version = "=0.6.1", features = ["all"] }
+subtle = "=2.6.1"
+
+[target."cfg(windows)".dependencies]
+windows = { version = "=0.58.0", features = ["Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }

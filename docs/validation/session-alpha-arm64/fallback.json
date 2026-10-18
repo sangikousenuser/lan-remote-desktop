@@ -1,0 +1,20 @@
+{
+  "remote_connection_tested" : false,
+  "hardware_decode" : true,
+  "renderer" : "Core Image CPU fallback",
+  "elapsed_seconds" : 5.1857879583330941,
+  "schema" : 1,
+  "decode_or_gpu_errors" : 0,
+  "error" : "",
+  "received_bytes" : 0,
+  "os" : "Version 27.0.1 (Build 26A434)",
+  "rtt_ms" : 0,
+  "rendered_frames" : 285,
+  "architecture" : "arm64",
+  "dropped_network_frames" : 0,
+  "render_fps" : 54.957896907842262,
+  "decoded_frames" : 300,
+  "test" : "local_h264_decode_render",
+  "decode_fps" : 57.850417797728696,
+  "sent_bytes" : 0
+}

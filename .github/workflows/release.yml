@@ -1,0 +1,18 @@
+name: Protected Stable Release (disabled until signing is implemented)
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  protected-release:
+    runs-on: ubuntu-24.04
+    environment: release
+    steps:
+      - name: Safe fail-closed release gate
+        run: |
+          echo 'BLOCKED: Alpha sessions and installer exist. Signed update apply/rollback, transport comparison, fixed-IP helper and hardware validation remain incomplete.'
+          echo 'Implement signed package publication, reviewed artifact provenance and rollback tests before enabling this workflow.'
+          exit 1

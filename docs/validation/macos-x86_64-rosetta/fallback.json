@@ -1,0 +1,16 @@
+{
+  "remote_connection_tested" : false,
+  "hardware_decode" : 1,
+  "renderer" : "Core Image CPU fallback",
+  "elapsed_seconds" : 5.1712821250548586,
+  "schema" : 1,
+  "decode_or_gpu_errors" : 0,
+  "error" : "",
+  "os" : "Version 27.0.1 (Build 26A434)",
+  "rendered_frames" : 265,
+  "architecture" : "x86_64",
+  "render_fps" : 51.244545084104999,
+  "decoded_frames" : 300,
+  "test" : "local_h264_decode_render",
+  "decode_fps" : 58.012692548043397
+}
