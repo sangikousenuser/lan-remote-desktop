@@ -159,7 +159,62 @@ impl Write for Tls {
         }
     }
 }
+/// Transport configurations authenticate certificate possession; the application
+/// must still complete the channel-bound, bilateral approval gate.
+pub fn client_configuration(
+    identity: &Identity,
+    expected_pin: Option<String>,
+) -> Result<ClientConfig> {
+    let provider = rustls::crypto::ring::default_provider();
+    client_configuration_with_provider(identity, expected_pin, provider)
+}
+pub fn client_configuration_with_provider(
+    identity: &Identity,
+    expected_pin: Option<String>,
+    provider: CryptoProvider,
+) -> Result<ClientConfig> {
+    Ok(
+        ClientConfig::builder_with_provider(Arc::new(provider.clone()))
+            .with_protocol_versions(&[&rustls::version::TLS13])?
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(DeviceVerifier {
+                expected: expected_pin,
+                provider,
+            }))
+            .with_client_auth_cert(vec![identity.certificate.clone()], identity.key())?,
+    )
+}
+pub fn server_configuration(identity: &Identity) -> Result<ServerConfig> {
+    let provider = rustls::crypto::ring::default_provider();
+    server_configuration_with_provider(identity, provider)
+}
+pub fn server_configuration_with_provider(
+    identity: &Identity,
+    provider: CryptoProvider,
+) -> Result<ServerConfig> {
+    Ok(
+        ServerConfig::builder_with_provider(Arc::new(provider.clone()))
+            .with_protocol_versions(&[&rustls::version::TLS13])?
+            .with_client_cert_verifier(Arc::new(DeviceVerifier {
+                expected: None,
+                provider,
+            }))
+            .with_single_cert(vec![identity.certificate.clone()], identity.key())?,
+    )
+}
 impl Tls {
+    pub fn export_media_keys(&self) -> Result<[u8; 72]> {
+        Ok(match self {
+            Self::Client(s) => {
+                s.conn
+                    .export_keying_material([0u8; 72], b"EXPORTER-LRD-hybrid-media-v1", None)?
+            }
+            Self::Server(s) => {
+                s.conn
+                    .export_keying_material([0u8; 72], b"EXPORTER-LRD-hybrid-media-v1", None)?
+            }
+        })
+    }
     pub fn nonblocking(&mut self) -> std::io::Result<()> {
         self.socket().set_read_timeout(None)?;
         self.socket().set_write_timeout(None)?;
@@ -219,15 +274,7 @@ impl Tls {
         socket.set_read_timeout(Some(Duration::from_secs(60)))?;
         socket.set_write_timeout(Some(Duration::from_secs(10)))?;
         socket.set_nodelay(true)?;
-        let provider = rustls::crypto::ring::default_provider();
-        let config = ClientConfig::builder_with_provider(Arc::new(provider.clone()))
-            .with_protocol_versions(&[&rustls::version::TLS13])?
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(DeviceVerifier {
-                expected: expected_pin,
-                provider,
-            }))
-            .with_client_auth_cert(vec![identity.certificate.clone()], identity.key())?;
+        let config = client_configuration(identity, expected_pin)?;
         let mut connection = ClientConnection::new(
             Arc::new(config),
             ServerName::try_from("lanremoted.local")?.to_owned(),
@@ -242,14 +289,7 @@ impl Tls {
         socket.set_read_timeout(Some(Duration::from_secs(60)))?;
         socket.set_write_timeout(Some(Duration::from_secs(10)))?;
         socket.set_nodelay(true)?;
-        let provider = rustls::crypto::ring::default_provider();
-        let config = ServerConfig::builder_with_provider(Arc::new(provider.clone()))
-            .with_protocol_versions(&[&rustls::version::TLS13])?
-            .with_client_cert_verifier(Arc::new(DeviceVerifier {
-                expected: None,
-                provider,
-            }))
-            .with_single_cert(vec![identity.certificate.clone()], identity.key())?;
+        let config = server_configuration(identity)?;
         let mut connection = ServerConnection::new(Arc::new(config))?;
         let mut socket = socket;
         while connection.is_handshaking() {

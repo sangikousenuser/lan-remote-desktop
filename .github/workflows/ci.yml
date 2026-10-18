@@ -49,6 +49,14 @@ jobs:
         run: python3 -m unittest discover -s packaging/macos -p 'test_*.py'
       - name: Compile release applications
         run: cargo build --locked --workspace --release
+      - name: Compare transport candidates on loopback
+        run: cargo run --locked --release -p lrd-transport --example transport-compare -- --loopback --samples 120 --output target/transport-loopback.json
+      - name: Upload numeric transport comparison
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: transport-loopback-${{ matrix.os }}
+          path: target/transport-loopback.json
+          if-no-files-found: error
       - name: Install NSIS
         if: runner.os == 'Windows'
         run: choco install nsis --no-progress -y

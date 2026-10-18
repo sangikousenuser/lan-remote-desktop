@@ -214,7 +214,12 @@ impl Nic {
         Ok(socket.into())
     }
     pub fn accept(&self, listener: &TcpListener) -> Result<TcpStream> {
-        let (stream, remote) = listener.accept()?;
+        let (stream, _) = listener.accept()?;
+        self.constrain_tcp(&stream)?;
+        Ok(stream)
+    }
+    pub fn constrain_tcp(&self, stream: &TcpStream) -> Result<()> {
+        let remote = stream.peer_addr()?;
         let SocketAddr::V4(remote) = remote else {
             return fail("IPv4 peer required");
         };
@@ -224,8 +229,8 @@ impl Nic {
         {
             return fail("peer is outside selected Ethernet subnet");
         }
-        bind_interface(&SockRef::from(&stream), self.index, false)?;
-        Ok(stream)
+        bind_interface(&SockRef::from(stream), self.index, false)?;
+        Ok(())
     }
     pub fn connect(&self, remote: SocketAddr) -> Result<TcpStream> {
         let SocketAddr::V4(remote_v4) = remote else {

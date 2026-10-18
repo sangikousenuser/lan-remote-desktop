@@ -1,0 +1,42 @@
+[
+  {
+    "schema": 1,
+    "transport": "TLS + AES-256-GCM UDP",
+    "scope": "loopback diagnostics; no physical Ethernet, display or input latency measurement",
+    "samples_sent": 300,
+    "frames_echoed": 300,
+    "timed_out": 0,
+    "frame_bytes": 58253,
+    "frame_sha256": "c904bbccd86ccce78a34cd76a3b229f1c127e2e9e7950eaaccdae74c6fd53647",
+    "interval_us": 16667,
+    "reliable_bytes_echoed": 8388608,
+    "elapsed_ms": 4987.691041,
+    "completed_frame_rtt_p50_us": 827,
+    "completed_frame_rtt_p95_us": 922,
+    "completed_frame_rtt_p99_us": 990,
+    "input_to_display_measured": false,
+    "display_fps_measured": false,
+    "hardware_codec_measured": false,
+    "selected_winner": null
+  },
+  {
+    "schema": 1,
+    "transport": "QUIC DATAGRAM",
+    "scope": "loopback diagnostics; no physical Ethernet, display or input latency measurement",
+    "samples_sent": 300,
+    "frames_echoed": 300,
+    "timed_out": 0,
+    "frame_bytes": 58253,
+    "frame_sha256": "c904bbccd86ccce78a34cd76a3b229f1c127e2e9e7950eaaccdae74c6fd53647",
+    "interval_us": 16667,
+    "reliable_bytes_echoed": 8388608,
+    "elapsed_ms": 4986.732708,
+    "completed_frame_rtt_p50_us": 1181,
+    "completed_frame_rtt_p95_us": 1372,
+    "completed_frame_rtt_p99_us": 1689,
+    "input_to_display_measured": false,
+    "display_fps_measured": false,
+    "hardware_codec_measured": false,
+    "selected_winner": null
+  }
+]
