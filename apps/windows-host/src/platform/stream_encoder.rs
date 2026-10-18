@@ -317,6 +317,18 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert!(!output.is_empty(), "native MFT produced no H.264");
+        if let Ok(path) = std::env::var("LRD_ENCODER_FIXTURE") {
+            let first = &output[0];
+            std::fs::write(&path, first).unwrap();
+            let metadata = serde_json::json!({"schema":1,"source":"generated pixels / Microsoft software H.264 MFT",
+                "width":640,"height":480,"bytes":first.len(),"sha256":lrd_session::identity::fingerprint(first),
+                "desktop_captured":false,"hardware_encoder_tested":false});
+            std::fs::write(
+                std::path::Path::new(&path).with_extension("json"),
+                serde_json::to_vec_pretty(&metadata).unwrap(),
+            )
+            .unwrap();
+        }
         let mut kinds = std::collections::HashSet::new();
         for bytes in output {
             for i in 0..bytes.len().saturating_sub(4) {

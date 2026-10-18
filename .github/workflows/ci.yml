@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: verify (${{ matrix.os }})
@@ -30,6 +34,17 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Unit tests
         run: cargo test --locked --workspace
+        env:
+          LRD_ENCODER_FIXTURE: ${{ runner.temp }}/lrd-first-frame.h264
+      - name: Upload synthetic Windows codec fixture
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-software-codec-fixture
+          path: |
+            ${{ runner.temp }}/lrd-first-frame.h264
+            ${{ runner.temp }}/lrd-first-frame.json
+          if-no-files-found: error
       - name: Packaging gate tests
         run: python3 -m unittest discover -s packaging/macos -p 'test_*.py'
       - name: Compile release applications
@@ -63,3 +78,21 @@ jobs:
           name: intel-macos-client-alpha
           path: dist/x86_64-apple-darwin/
           if-no-files-found: error
+
+  cross-os-codec:
+    name: Windows MFT to macOS VideoToolbox
+    needs: verify
+    runs-on: macos-15-intel
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '10.13'
+      LRD_EXTERNAL_H264_FIXTURE: ${{ runner.temp }}/lrd-first-frame.h264
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-software-codec-fixture
+          path: ${{ runner.temp }}
+      - name: Install Rust
+        run: rustup toolchain install 1.99.0 --profile minimal
+      - name: Decode this run's Windows H.264 on macOS
+        run: cargo test --locked -p lrd-macos-client network::tests::windows_software_mft_frame_decodes_on_mac -- --ignored --exact

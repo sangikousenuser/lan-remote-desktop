@@ -424,6 +424,30 @@ pub unsafe extern "C" fn lrd_control_json(bytes: *const u8, length: usize) -> bo
 mod tests {
     use super::*;
     #[test]
+    #[ignore = "requires the Windows MFT output artifact from this CI run"]
+    fn windows_software_mft_frame_decodes_on_mac() {
+        unsafe extern "C" {
+            fn lrd_decode_annexb_probe(bytes: *const u8, length: usize) -> u64;
+        }
+        let path = std::path::PathBuf::from(
+            std::env::var_os("LRD_EXTERNAL_H264_FIXTURE").expect("Windows fixture path missing"),
+        );
+        let metadata: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path.with_extension("json")).unwrap()).unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() <= 8 * 1024 * 1024);
+        let bytes = std::fs::read(path).unwrap();
+        assert_eq!(
+            metadata["sha256"].as_str().unwrap(),
+            lrd_session::identity::fingerprint(&bytes)
+        );
+        assert_eq!(metadata["desktop_captured"], false);
+        assert_eq!(
+            unsafe { lrd_decode_annexb_probe(bytes.as_ptr(), bytes.len()) },
+            1,
+            "Windows MFT output was not decoded by VideoToolbox"
+        );
+    }
+    #[test]
     fn tls_video_reaches_real_videotoolbox_decoder() {
         unsafe extern "C" {
             fn lrd_decode_annexb_probe(bytes: *const u8, length: usize) -> u64;
