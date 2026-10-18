@@ -2,6 +2,7 @@ name: Rust CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,6 +34,25 @@ jobs:
         run: python3 -m unittest discover -s packaging/macos -p 'test_*.py'
       - name: Compile release applications
         run: cargo build --locked --workspace --release
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: choco install nsis --no-progress -y
+      - name: Package Windows Host
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH += ";${env:ProgramFiles(x86)}\NSIS"
+          python3 packaging/windows/package.py --binary target/release/lrd-windows-host.exe --installer
+      - name: Upload Windows Host alpha
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-host-alpha
+          path: |
+            dist/LAN-Remote-Desktop-Windows-Host.zip
+            dist/LAN-Remote-Desktop-Windows-Setup.exe
+            dist/windows-SHA256SUMS
+          if-no-files-found: error
       - name: Package and inspect Intel macOS app
         if: runner.os == 'macOS'
         run: python3 packaging/macos/package.py

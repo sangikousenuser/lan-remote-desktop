@@ -2,6 +2,7 @@ name: Alpha Candidate Build (NOT a Stable release)
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
 
 permissions:
   contents: read

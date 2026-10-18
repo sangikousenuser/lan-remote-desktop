@@ -72,3 +72,5 @@ NSIS 3が必要です。開発MacではMinGW版PEもクロスビルドしてい�
 - [実装した通信のADR](docs/adr/0006-live-session.md)
 
 公開リポジトリ: [sangikousenuser/lan-remote-desktop](https://github.com/sangikousenuser/lan-remote-desktop)。[GitHub Actions](https://github.com/sangikousenuser/lan-remote-desktop/actions)で3OSのビルド・テストを実行します。正式Releaseは未実装機能と実機ゲートの解消まで停止しています。
+
+GitHubでログインして成功した **Rust CI** を開くと、ページ下部の **Artifacts** から `windows-host-alpha` と `intel-macos-client-alpha` を取得できます。Windows側はダウンロードした外側のActions ZIPを展開し、含まれるSetupまたはHost ZIPを使用してください。これらは署名付き自動更新用の正式Releaseではありません。
