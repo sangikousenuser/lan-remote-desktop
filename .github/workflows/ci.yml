@@ -49,6 +49,9 @@ jobs:
         run: python3 -m unittest discover -s packaging/macos -p 'test_*.py'
       - name: Compile release applications
         run: cargo build --locked --workspace --release
+      - name: Initialize Windows process and enumerate Ethernet
+        if: runner.os == 'Windows'
+        run: target/release/lrd-windows-host.exe --interfaces
       - name: Compare transport candidates on loopback
         run: cargo run --locked --release -p lrd-transport --example transport-compare -- --loopback --samples 120 --output target/transport-loopback.json
       - name: Upload numeric transport comparison

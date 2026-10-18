@@ -46,6 +46,19 @@ impl Drop for Runtime {
 }
 
 pub fn run() -> Result<()> {
+    // DXGI reports physical pixels. Keep monitor geometry and SendInput's
+    // virtual desktop coordinates in that same space at 125%/150% and mixed DPI.
+    unsafe {
+        use windows::Win32::UI::HiDpi::*;
+        if !AreDpiAwarenessContextsEqual(
+            GetThreadDpiAwarenessContext(),
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        )
+        .as_bool()
+        {
+            SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)?;
+        }
+    }
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.is_empty() {
         return remote::run(&["--serve".into(), "--auto".into()]);
