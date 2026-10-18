@@ -14,6 +14,9 @@ Unicode true
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=absolute/path/to/windows-host"
 !endif
+!ifndef APP_VERSION
+!error "Pass /DAPP_VERSION=workspace-version"
+!endif
 Name "LAN Remote Desktop"
 OutFile "LAN-Remote-Desktop-Windows-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\LAN Remote Desktop"
@@ -69,6 +72,7 @@ Section "Host (required)" Main
   SetOutPath "$INSTDIR"
   File "${PAYLOAD}\lrd-windows-host.exe"
   File "${PAYLOAD}\lrd-update-helper.exe"
+  File "${PAYLOAD}\lrd-update-helper-${APP_VERSION}.exe"
   File "${PAYLOAD}\Start-Host.ps1"
   File "${PAYLOAD}\Test-Host.ps1"
   File "${PAYLOAD}\Configure-Firewall.ps1"
@@ -107,6 +111,8 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\LAN Remote Desktop"
   Delete "$INSTDIR\lrd-windows-host.exe"
   Delete "$INSTDIR\lrd-update-helper.exe"
+  ; Reserved installer/update payload namespace; never remove other user files.
+  Delete "$INSTDIR\lrd-update-helper-*.exe"
   Delete "$INSTDIR\Start-Host.ps1"
   Delete "$INSTDIR\Test-Host.ps1"
   Delete "$INSTDIR\Configure-Firewall.ps1"

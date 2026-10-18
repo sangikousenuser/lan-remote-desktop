@@ -124,6 +124,13 @@ pub fn installation(executable: &Path, helper: bool) -> Result<PathBuf> {
 }
 pub fn helper_path(root: &Path) -> PathBuf {
     if cfg!(windows) {
+        let versioned = root.join(format!(
+            "lrd-update-helper-{}.exe",
+            env!("CARGO_PKG_VERSION")
+        ));
+        if versioned.is_file() {
+            return versioned;
+        }
         root.join("lrd-update-helper.exe")
     } else {
         root.join("Contents/Helpers/lrd-update-helper")
@@ -236,15 +243,22 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
         let Some((stage, package)) = newest_staged(&stage_directory()?, &policy)? else {
             return Ok(false);
         };
-        // Bootstrap itself is immutable and is upgraded by an installer. A
-        // running Windows helper must never be part of its own replacement set.
-        if package
-            .manifest()
-            .files
-            .iter()
-            .any(|entry| entry.path.to_lowercase().contains("lrd-update-helper"))
+        // Windows runs a versioned helper, so the next version may install a
+        // different helper without touching the executable currently in use.
+        // Darwin permits atomic rename of a running image; the bundle's helper
+        // must be updated together with its code-signing resource seal.
+        let current_helper = std::env::current_exe()?
+            .file_name()
+            .ok_or("missing helper name")?
+            .to_string_lossy()
+            .to_lowercase();
+        if cfg!(windows)
+            && package.manifest().files.iter().any(|entry| {
+                entry.path.eq_ignore_ascii_case(&current_helper)
+                    || entry.path.eq_ignore_ascii_case("lrd-update-helper.exe")
+            })
         {
-            return fail("bootstrap helper replacement requires an installer");
+            return fail("running bootstrap helper cannot be replaced");
         }
         if !package.manifest().files.iter().any(|entry| {
             entry.path
