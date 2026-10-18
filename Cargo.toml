@@ -6,6 +6,7 @@ members = [
     "apps/windows-host",
     "apps/macos-client",
     "crates/lrd-session",
+    "apps/update-helper",
 ]
 
 [workspace.package]

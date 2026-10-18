@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -76,7 +76,14 @@ pub(crate) fn read_private(path: &Path, maximum: u64) -> Result<Vec<u8>> {
             return fail("identity file must be owner-only");
         }
     }
-    Ok(fs::read(path)?)
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(maximum + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > maximum {
+        return fail("identity file exceeded size limit");
+    }
+    Ok(bytes)
 }
 
 impl Identity {

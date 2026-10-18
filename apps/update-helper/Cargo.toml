@@ -1,0 +1,9 @@
+[package]
+name = "lrd-update-helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lrd-session = { path = "../../crates/lrd-session" }

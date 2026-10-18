@@ -26,6 +26,10 @@ def main():
     folder = ROOT / 'dist/windows-host'
     folder.mkdir(parents=True, exist_ok=True)
     shutil.copy2(binary, folder / 'lrd-windows-host.exe')
+    helper = binary.with_name('lrd-update-helper.exe')
+    if not helper.is_file():
+        parser.error('build lrd-update-helper for the same Windows target first')
+    shutil.copy2(helper, folder / helper.name)
     for name in ['Test-Host.ps1', 'Start-Host.ps1', 'Configure-Firewall.ps1']:
         source = ROOT / 'packaging/windows' / name
         (folder / name).write_text(source.read_text(encoding='utf-8-sig'), encoding='utf-8-sig')

@@ -31,7 +31,7 @@ def main():
     elif legacy_sdk.exists() and ("SDKROOT" not in environment or current_sdk.name == "MacOSX27.0.sdk"):
         environment["SDKROOT"] = str(legacy_sdk)
     print("Build SDK:", environment.get("SDKROOT", "toolchain default"), flush=True)
-    subprocess.run(["cargo", "build", "--locked", "--release", "-p", "lrd-macos-client", "--target", args.target], cwd=ROOT, env=environment, check=True)
+    subprocess.run(["cargo", "build", "--locked", "--release", "-p", "lrd-macos-client", "-p", "lrd-update-helper", "--target", args.target], cwd=ROOT, env=environment, check=True)
     source = ROOT / "target" / args.target / "release" / "lrd-macos-client"
     subprocess.run([sys.executable, str(ROOT / "packaging/macos/verify_binary.py"), str(source), "--target", args.target], check=True)
     destination = ROOT / "dist" / args.target
@@ -43,6 +43,11 @@ def main():
     executable.parent.mkdir(parents=True)
     resources.mkdir()
     shutil.copy2(source, executable)
+    helper = app / "Contents/Helpers/lrd-update-helper"
+    helper.parent.mkdir()
+    helper_source = source.with_name("lrd-update-helper")
+    subprocess.run([sys.executable, str(ROOT / "packaging/macos/verify_binary.py"), str(helper_source), "--target", args.target], check=True)
+    shutil.copy2(helper_source, helper)
     shutil.copy2(ROOT / "assets/test-pattern.mp4", resources / "test-pattern.mp4")
     shutil.copy2(ROOT / "docs/manual-testing.md", resources / "manual-testing.md")
     with (app / "Contents/Info.plist").open("wb") as stream:
@@ -61,6 +66,7 @@ def main():
     # An ad-hoc signature is required to run arm64 executables on modern Macs.
     # It is not a Developer ID or update signature.
     if args.target.startswith("aarch64"):
+        subprocess.run(["codesign", "--force", "--sign", "-", str(helper)], check=True)
         subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True)
     archive = destination / "LAN-Remote-Desktop-macOS-client.zip"
     # ditto preserves bundle metadata, modes and signatures on macOS.

@@ -17,6 +17,7 @@ extern void lrd_send_file(const char *);
 extern void lrd_cancel_files(void);
 extern bool lrd_clipboard_send(uint8_t,const uint8_t *,size_t);
 extern bool lrd_control_json(const uint8_t *,size_t);
+extern void lrd_startup_ready(void);
 
 
 // This bridge owns every CF/ObjC object. No borrowed image pointer crosses into Rust.
@@ -392,6 +393,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     self.window.acceptsMouseMovedEvents=YES;
     NSRect available=NSScreen.mainScreen.visibleFrame;[self.window setContentSize:NSMakeSize(MIN(1120,MAX(930,available.size.width-40)),MIN(780,MAX(600,available.size.height-40)))];
     [self.window center]; [self.window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
+    if(!self.smoke)lrd_startup_ready();
     if (self.smoke) [self start:nil];
     if(self.launchAddress){[self.interfaces selectItemWithTag:self.launchInterface];self.address.stringValue=self.launchAddress;[self connect:nil];}
 }

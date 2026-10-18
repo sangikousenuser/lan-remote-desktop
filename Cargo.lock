@@ -376,6 +376,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lrd-update-helper"
+version = "0.9.0-alpha.1"
+dependencies = [
+ "lrd-session",
+]
+
+[[package]]
 name = "lrd-windows-host"
 version = "0.9.0-alpha.1"
 dependencies = [

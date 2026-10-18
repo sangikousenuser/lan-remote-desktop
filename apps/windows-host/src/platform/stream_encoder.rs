@@ -297,3 +297,39 @@ unsafe fn configure(media: &IMFMediaType, w: u32, h: u32, fps: u32) -> windows::
     media.SetUINT64(&MF_MT_FRAME_RATE, ((fps as u64) << 32) | 1)?;
     media.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, (1u64 << 32) | 1)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn real_software_mft_encodes_generated_pixels_with_parameter_sets() {
+        let _runtime = crate::platform::Runtime::initialize().unwrap();
+        let mut encoder = StreamEncoder::software(640, 480, 30).unwrap();
+        encoder.set_bitrate(4_000_000);
+        encoder.request_keyframe();
+        let mut output = Vec::new();
+        let mut pixels = vec![0u8; 640 * 480 * 4];
+        for i in 0..32u8 {
+            for (n, pixel) in pixels.chunks_exact_mut(4).enumerate() {
+                pixel.copy_from_slice(&[(n % 256) as u8, i, 100, 255]);
+            }
+            output.extend(encoder.encode(&pixels).unwrap());
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(!output.is_empty(), "native MFT produced no H.264");
+        let mut kinds = std::collections::HashSet::new();
+        for bytes in output {
+            for i in 0..bytes.len().saturating_sub(4) {
+                if bytes[i..].starts_with(&[0, 0, 0, 1]) {
+                    kinds.insert(bytes[i + 4] & 31);
+                } else if bytes[i..].starts_with(&[0, 0, 1]) {
+                    kinds.insert(bytes[i + 3] & 31);
+                }
+            }
+        }
+        assert!(
+            kinds.contains(&7) && kinds.contains(&8) && kinds.contains(&5),
+            "missing SPS/PPS/IDR: {kinds:?}"
+        );
+    }
+}

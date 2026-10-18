@@ -28,7 +28,7 @@ IPv4設定のないEthernetは選択できません。Wi-Fiへ切り替えて接
 
 TLS 1.3相互端末認証と両端承認、Ethernet拘束とUDP探索、DXGI→H.264→VideoToolbox/Metal、SendInput、かな/英数・JIS/US・Command変換、絶対／相対マウス、120秒復帰、PC全体の操作排他、モニター切替と表示モード復元、WASAPI→CoreAudio音声、テキスト/PNG同期、SHA-256付きファイル／フォルダー転送と永続再開、NSIS両インストールモード、LaunchAgentを実装しています。
 
-未完了: QUICとTLS+UDPの比較実装・実測、権限付き固定IPウィザード、Explorer等への直接OLEドラッグ＆ドロップ、更新のHTTPS取得／次回起動適用／起動失敗時rollback、正式署名公開、Windows新機能の実動作・High Sierra・長時間の受入試験。更新署名・互換性・安全なstagingの共通validatorは実装済みですが、自動更新としては稼働しません。
+未完了: QUICとTLS+UDPの比較実装・実測、権限付き固定IPウィザード、Explorer等への直接OLEドラッグ＆ドロップ、更新の管理者権限経路、正式署名公開、Windows新機能の実動作・High Sierra・長時間の受入試験。更新はHTTPS取得・独立署名・次回起動時helper・バックアップ/起動確認/復元まで実装していますが、正式Stableの配布はまだありません。管理者所有の配置は更新を保留します。[更新処理の範囲](docs/adr/0007-update-transactions.md)を参照してください。
 
 [実装状況と検証結果](docs/implementation-status.md)で、実装、ローカル確認、実機未確認を区別しています。仕様の受入条件は維持しています。
 
@@ -57,7 +57,7 @@ Mac SDK 27は旧OSにないSwift CoreMedia依存を付ける場合があるた�
 Windows MSVC環境（配布時にRustは不要）:
 
 ```powershell
-cargo build --locked --release -p lrd-windows-host
+cargo build --locked --release -p lrd-windows-host -p lrd-update-helper
 python3 packaging/windows/package.py --binary target/release/lrd-windows-host.exe --installer
 ```
 

@@ -12,6 +12,14 @@ fn main() {
         }
         return;
     }
+    if !std::env::args().any(|a| matches!(a.as_str(), "--help" | "--smoke-test" | "--video"))
+        && matches!(
+            lrd_session::updates::service::bootstrap(env!("CARGO_PKG_VERSION")),
+            Ok(true)
+        )
+    {
+        return;
+    }
     use std::ffi::CString;
     unsafe extern "C" {
         fn lrd_client_main(argc: i32, argv: *const *const std::ffi::c_char) -> i32;
@@ -23,6 +31,14 @@ fn main() {
     // The native entry runs synchronously on the main thread; all C strings outlive it.
     let code = unsafe { lrd_client_main(pointers.len() as i32, pointers.as_ptr()) };
     std::process::exit(code);
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn lrd_startup_ready() {
+    if !std::env::args().any(|a| matches!(a.as_str(), "--smoke-test" | "--video")) {
+        lrd_session::updates::service::ready(env!("CARGO_PKG_VERSION"));
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

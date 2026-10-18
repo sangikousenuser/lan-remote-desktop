@@ -7,6 +7,10 @@ use std::{
     collections::HashSet,
     path::{Path, PathBuf},
 };
+pub mod download;
+pub mod health;
+pub mod service;
+pub mod transaction;
 pub const MAX_PACKAGE: usize = 512 * 1024 * 1024;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -91,16 +95,7 @@ impl VerifiedManifest {
         {
             return fail("incompatible update target/OS/protocol");
         }
-        if !manifest.package_url.starts_with("https://")
-            || manifest.package_url.len() > 2048
-            || manifest.package_url.contains(['\r', '\n', '\\'])
-            || manifest.package_url[8..]
-                .split('/')
-                .next()
-                .is_none_or(|h| h.is_empty() || h.contains('@'))
-        {
-            return fail("HTTPS update endpoint required");
-        }
+        download::validate_url(&manifest.package_url)?;
         if manifest.files.is_empty()
             || manifest.files.len() > 256
             || manifest.package_size > MAX_PACKAGE as u64
@@ -111,11 +106,26 @@ impl VerifiedManifest {
         let mut total = 8u64;
         for file in &manifest.files {
             crate::transfer::validate_path(&file.path)?;
-            if file.path.len() > 2048 || !paths.insert(file.path.to_lowercase()) {
+            if file.path.len() > 2048
+                || file
+                    .path
+                    .split('/')
+                    .any(|part| part.eq_ignore_ascii_case(".lrd-update"))
+                || !paths.insert(file.path.to_lowercase())
+            {
                 return fail("duplicate/oversized update path");
             }
             hex_bytes(&file.sha256, 32)?;
             total = total.checked_add(file.size).ok_or("update size overflow")?;
+        }
+        for path in &paths {
+            let mut parent = path.as_str();
+            while let Some((head, _)) = parent.rsplit_once('/') {
+                if paths.contains(head) {
+                    return fail("update file/directory path conflict");
+                }
+                parent = head;
+            }
         }
         hex_bytes(&manifest.package_sha256, 32)?;
         if total != manifest.package_size {
@@ -172,6 +182,49 @@ impl VerifiedPackage {
         Ok(root)
     }
 }
+/// Re-authenticate persisted stages; a ready filename is never sufficient.
+pub fn newest_staged(
+    parent: &Path,
+    policy: &Policy<'_>,
+) -> Result<Option<(PathBuf, VerifiedPackage)>> {
+    if !parent.exists() {
+        return Ok(None);
+    }
+    identity::private_directory(parent)?;
+    let mut best: Option<(PathBuf, VerifiedPackage)> = None;
+    for entry in std::fs::read_dir(parent)?.take(32) {
+        let entry = entry?;
+        if !entry.file_name().to_string_lossy().starts_with("staged-")
+            || !entry.file_type()?.is_dir()
+            || entry.file_type()?.is_symlink()
+        {
+            continue;
+        }
+        let root = entry.path();
+        let attempt = (|| -> Result<VerifiedPackage> {
+            if identity::read_private(&root.join("UPDATE_STAGED"), 8)? != b"1\n" {
+                return fail("invalid ready marker");
+            }
+            VerifiedManifest::verify(
+                &identity::read_private(&root.join("manifest.json"), 128 * 1024)?,
+                policy,
+            )?
+            .verify_package(identity::read_private(
+                &root.join("package.lrdpkg"),
+                MAX_PACKAGE as u64,
+            )?)
+        })();
+        if let Ok(package) = attempt {
+            if best.as_ref().is_none_or(|(_, old)| {
+                semver::Version::parse(&package.manifest().version).unwrap()
+                    > semver::Version::parse(&old.manifest().version).unwrap()
+            }) {
+                best = Some((root, package));
+            }
+        }
+    }
+    Ok(best)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,7 +232,7 @@ mod tests {
         rand::SystemRandom,
         signature::{Ed25519KeyPair, KeyPair},
     };
-    fn fixture() -> (Ed25519KeyPair, Manifest, Vec<u8>) {
+    pub(super) fn fixture() -> (Ed25519KeyPair, Manifest, Vec<u8>) {
         let key = Ed25519KeyPair::from_pkcs8(
             Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
                 .unwrap()
@@ -205,7 +258,7 @@ mod tests {
         };
         (key, m, bytes)
     }
-    fn sign(key: &Ed25519KeyPair, m: &Manifest) -> Vec<u8> {
+    pub(super) fn sign(key: &Ed25519KeyPair, m: &Manifest) -> Vec<u8> {
         let manifest = serde_json::to_string(m).unwrap();
         let signature = identity::hex(key.sign(manifest.as_bytes()).as_ref());
         serde_json::to_vec(&Envelope {
@@ -214,7 +267,7 @@ mod tests {
         })
         .unwrap()
     }
-    fn policy(key: &[u8; 32]) -> Policy<'_> {
+    pub(super) fn policy(key: &[u8; 32]) -> Policy<'_> {
         Policy {
             installed: "0.9.0-alpha.1",
             highest_staged: None,

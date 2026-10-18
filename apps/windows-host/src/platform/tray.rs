@@ -86,6 +86,7 @@ unsafe fn run() -> Result<()> {
     if !unsafe { Shell_NotifyIconW(NIM_ADD, &icon) }.as_bool() {
         return Err("could not create tray icon".into());
     }
+    lrd_session::updates::service::ready(env!("CARGO_PKG_VERSION"));
     let mut message = MSG::default();
     while unsafe { GetMessageW(&mut message, None, 0, 0) }.0 > 0 {
         unsafe {

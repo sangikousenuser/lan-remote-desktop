@@ -23,10 +23,10 @@
 | 転送 | 専用UI、双方向ファイル/フォルダー、階層/複数選択、進捗/取消、SHA-256、1MiB chunk、永続manifestと再開、capability受信、非上書き完成配置 | 実LANの両方向1GiB超、遅いディスク、アプリ再起動の受入試験。不要な部分データの整理UI |
 | Drag & Drop | Finder→Mac転送/映像画面、Explorer→Windows専用画面から固定受信先へ転送 | 任意Explorer/Finder位置への直接リモートOLE/File Promise連携 |
 | 常駐/配布 | Windows tray/専用転送画面、同一NICで待受再構築、NSIS Per-user/Per-machine、任意のログイン時起動、Mac LaunchAgent登録/解除、.app/ZIP | 両Windowsモードのインストール/アンインストール実機、High Sierra LaunchAgent |
-| 更新 | Ed25519署名・Stable version・CPU/OS/protocol・HTTPS URL・hash・パス制限のvalidator、private staging | 実アプリへの統合、HTTPS取得、次回起動前helper、backup/起動確認/rollback、署名運用 |
+| 更新 | HTTPS取得、埋込みEd25519署名、Stable/CPU/OS/protocol/hash/パス検査、private staging、次回起動helper、backup/journal、起動応答/生存監視、失敗復元、失敗版blocklist | 管理者所有の配置への権限分離・署名公開workflow・実際の2版アプリでの更新試験。Stableはまだ未公開 |
 | Q50 | 暫定TLS/TCP live path。別codecとmedia assemblerの単体試験 | QUIC DATAGRAMとTLS+AEAD UDP両候補の実装・同条件ベンチ。最終方式は未選定 |
 | 固定IP | OSのDHCP/Link-Localを利用。Firewall限定設定スクリプトを同梱 | 狭い管理者helper、snapshot/rollback、衝突検出、両端ローカルウィザード |
-| CI/正式公開 | 3OS fmt/clippy/tests/build、Mach-O検査、alpha候補生成設定、正式公開を拒否するゲート | 初回Actions結果の確認、実機ゲート、署名/公開helperの完成 |
+| CI/正式公開 | Public repo、3OS fmt/clippy/tests/buildとWindows NSIS/Intel .app生成成功、alpha取得可能、正式公開を拒否するゲート | 追加変更のActions検証、実機ゲート、署名公開workflowの完成 |
 
 ## ローカルで確認したこと
 
@@ -37,7 +37,7 @@
 - 別途、ignored指定の1GiB超テストを実行済み。1GiB+123bytesを512チャンクで中断し、Receiverを作り直して残りを受信、全体SHA-256一致。182.47秒。この結果は転送エンジンのローカル試験であり実LAN試験ではありません。
 - Macの実アプリ: Ethernet不在の案内、専用転送画面、ローカル映像、全画面バー、Control+Command+Fによる解除。
 - `cargo fmt` / 両対象のclippy、通常テスト、PE/Mach-Oビルド、Intel/arm64最低OS/依存検査、Mac GPU/CPUと異常系smoke、NSIS生成、依存監査の結果は `docs/validation/` に保存します。
-- rustlsを0.23.46へ更新。検出された旧版の公開advisoryを解消しました。署名用秘密鍵や公開Releaseは作成していません。
+- rustlsを0.23.46へ更新。検出された旧版の公開advisoryを解消しました。更新用の独立鍵を生成し、公開鍵だけをソースに登録します。秘密鍵はGit外の所有者専用ディレクトリに保存しています。公開Releaseはまだありません。
 
 現在のMacにはIPv4設定済みEthernetが検出されません。対象のWindows機への実接続は行えていません。
 High Sierraでの互換性は最低OSのロードコマンド検査やRosettaでは代替できません。
@@ -46,8 +46,10 @@ High Sierraでの互換性は最低OSのロードコマンド検査やRosettaで
 ## 次の受入ゲート
 
 新しいWindows ZIPの `Start-Host.ps1` とMacアプリで実際に接続し、初回承認→映像/入力→音声/clipboard→抜線復帰→モニター変更→両方向転送を確認します。[手順](manual-testing.md)に結果欄を定義しています。
-並行して、Q50、固定IP helper、更新取得/適用/rollback、直接OLE転送の残り実装が必要です。正式版としての公開ゲートは解除しません。
+ユーザー指定により、実機受入は全機能の実装と自動試験後にまとめて行います。Q50、固定IP helper、更新の管理者経路・公開workflow、直接OLE転送の残り実装を実機試験待ちにせず進めます。正式版としての公開ゲートは解除しません。
 
 ## GitHub公開
 
-公開先は https://github.com/sangikousenuser/lan-remote-desktop 。ユーザーの指定によりPublicリポジトリへソースを登録します。実行ファイル、端末鍵、個人用の診断JSONはGitに登録しません。Windowsでの新しい接続試験は「まだ試せない」との回答のため未実施のままです。Actionsの結果は別途記録します。
+公開先は https://github.com/sangikousenuser/lan-remote-desktop 。ユーザーの指定によりPublicリポジトリへソースを登録済みです。実行ファイル、端末鍵、個人用の診断JSONはGitに登録しません。Windowsでの新しい接続試験は「まだ試せない」との回答のため未実施のままです。コミット `74aeb9e` の3OS CIとWindows/Intel Macのパッケージ生成が成功しました: https://github.com/sangikousenuser/lan-remote-desktop/actions/runs/39140663687 。これはHigh Sierraや実LAN/GPUの合格ではありません。
+
+更新機能追加後のローカル検証: 通常59件成功（session 35、common 9、protocol 14、Mac TLS→VT 1）。ignored 2件のうち1件は起動監視の子プロセス用fixtureで、親テストから実行します。別の1件は前回実施した1GiB転送試験です。OS別CIへWindowsの実software MFT encode試験も追加しました。
