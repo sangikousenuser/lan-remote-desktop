@@ -67,12 +67,12 @@ Section "Host (required)" Main
     Abort
   ${EndIf}
   SetOutPath "$INSTDIR"
-  File "${PAYLOAD}/lrd-windows-host.exe"
-  File "${PAYLOAD}/Start-Host.ps1"
-  File "${PAYLOAD}/Test-Host.ps1"
-  File "${PAYLOAD}/Configure-Firewall.ps1"
-  File "${PAYLOAD}/manual-testing.md"
-  File "${PAYLOAD}/README.txt"
+  File "${PAYLOAD}\lrd-windows-host.exe"
+  File "${PAYLOAD}\Start-Host.ps1"
+  File "${PAYLOAD}\Test-Host.ps1"
+  File "${PAYLOAD}\Configure-Firewall.ps1"
+  File "${PAYLOAD}\manual-testing.md"
+  File "${PAYLOAD}\README.txt"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr SHCTX "Software\LAN Remote Desktop" "InstallDir" "$INSTDIR"
   WriteRegStr SHCTX "Software\LAN Remote Desktop" "InstallMode" "$MultiUser.InstallMode"
