@@ -445,6 +445,7 @@ name = "lrd-session"
 version = "0.9.0-alpha.1"
 dependencies = [
  "cap-std",
+ "libc",
  "netdev",
  "rcgen",
  "ring",

@@ -17,6 +17,7 @@ Windows 11のログイン済みデスクトップを、Ethernet経由でMacか�
 - `dist/aarch64-apple-darwin/LAN Remote Desktop.app`: Apple Silicon版、最低OS 11.0。この開発Macでの実行確認用。
 
 Windowsの通知領域アイコンから、ファイル送信、受信先、転送画面、切断、接続許可、終了を操作できます。
+接続中の性能ログは容量/期限を制限して各ユーザー領域へ保存します。両端の「性能ログを書き出す…」で内容を含まない数値JSONを保存できます。
 Macは「表示」メニューからモニター／解像度、クリップボード、音声、相対マウス、Command変換を選べます。
 ファイルは専用画面にドロップ可能です。受信先は両端の `Downloads/LAN Remote Desktop`。Explorerの任意フォルダーへ直接置くOLE転送は未実装です。
 Macのアプリメニューでログイン時のEthernet監視を登録／解除できます。アプリは先にApplicationsへ移動してください。

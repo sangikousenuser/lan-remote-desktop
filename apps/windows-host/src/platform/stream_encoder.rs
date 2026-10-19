@@ -21,6 +21,8 @@ pub struct StreamEncoder {
     output_ready: u32,
     started: std::time::Instant,
     produced: u64,
+    last_output: std::time::Instant,
+    last_encode_call: std::time::Instant,
 }
 impl StreamEncoder {
     pub fn new(width: u32, height: u32, fps: u32) -> Result<Self> {
@@ -88,6 +90,8 @@ impl StreamEncoder {
                 output_ready: 0,
                 started: std::time::Instant::now(),
                 produced: 0,
+                last_output: std::time::Instant::now(),
+                last_encode_call: std::time::Instant::now(),
             })
         }
     }
@@ -106,9 +110,11 @@ impl StreamEncoder {
         }
     }
     pub fn encode(&mut self, bgra: &[u8]) -> Result<Vec<Vec<u8>>> {
+        let active = self.last_encode_call.elapsed() < std::time::Duration::from_millis(1500);
+        self.last_encode_call = std::time::Instant::now();
         let stalled = self.events.is_some()
-            && self.produced == 0
-            && self.started.elapsed() > std::time::Duration::from_secs(2);
+            && active
+            && self.last_output.elapsed() > std::time::Duration::from_secs(2);
         let result = if stalled {
             Err("hardware encoder produced no frames".into())
         } else {
@@ -119,6 +125,9 @@ impl StreamEncoder {
             return self.encode_inner(bgra);
         }
         result
+    }
+    pub fn hardware_active(&self) -> Option<bool> {
+        (self.produced > 0).then_some(self.events.is_some())
     }
     fn poll_events(&mut self) -> Result<()> {
         if let Some(events) = self.events.clone() {
@@ -242,6 +251,7 @@ impl StreamEncoder {
                 frame.extend(lrd_session::h264::annex_b(&encoded)?);
                 result.push(frame);
                 self.produced += 1;
+                self.last_output = std::time::Instant::now();
                 self.output_ready = self.output_ready.saturating_sub(1);
             }
             Ok(result)

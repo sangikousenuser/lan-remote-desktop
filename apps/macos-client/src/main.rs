@@ -41,6 +41,60 @@ pub extern "C" fn lrd_startup_ready() {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn lrd_resource_statistics_json() -> *mut std::ffi::c_char {
+    static METER: std::sync::OnceLock<
+        std::sync::Mutex<lrd_session::diagnostics::resources::Meter>,
+    > = std::sync::OnceLock::new();
+    let resource = METER
+        .get_or_init(Default::default)
+        .lock()
+        .map(|mut m| m.sample())
+        .unwrap_or_default();
+    let value = serde_json::json!({"cpu_percent":resource.cpu_percent,"resident_bytes":resource.resident_bytes,
+        "peak_resident_bytes":resource.peak_resident_bytes,"log_dropped_samples":lrd_session::diagnostics::dropped_samples()});
+    std::ffi::CString::new(value.to_string()).map_or(std::ptr::null_mut(), |s| s.into_raw())
+}
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn lrd_record_render_metrics(
+    decode_fps: f64,
+    render_fps: f64,
+    rtt_ms: f64,
+    errors: u64,
+    dropped: u64,
+    sent: u64,
+    received: u64,
+    hardware: bool,
+) {
+    lrd_session::diagnostics::record(lrd_session::diagnostics::Sample {
+        decode_fps: Some(decode_fps),
+        render_fps: Some(render_fps),
+        rtt_ms: (rtt_ms > 0.).then_some(rtt_ms),
+        decode_errors: Some(errors),
+        dropped_frames: Some(dropped),
+        sent_bytes: Some(sent),
+        received_bytes: Some(received),
+        decoder_hardware: Some(hardware),
+        ..Default::default()
+    });
+}
+#[cfg(target_os = "macos")]
+#[no_mangle]
+/// # Safety
+/// `path` must point to a NUL-terminated UTF-8 string that remains readable until
+/// this call returns. It comes from the user's native Save panel.
+pub unsafe extern "C" fn lrd_export_numeric_logs(path: *const std::ffi::c_char) -> bool {
+    if path.is_null() {
+        return false;
+    }
+    let Ok(path) = (unsafe { std::ffi::CStr::from_ptr(path) }).to_str() else {
+        return false;
+    };
+    path.len() <= 32768 && lrd_session::diagnostics::export(std::path::Path::new(path)).is_ok()
+}
+
 #[cfg(not(target_os = "macos"))]
 fn main() {
     eprintln!("macOS Client requires macOS. Build the Windows Host on Windows.");

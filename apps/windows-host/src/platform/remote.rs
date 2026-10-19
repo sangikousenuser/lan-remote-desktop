@@ -627,11 +627,32 @@ fn serve(
     let mut previous_stalls = 0;
     encoder.set_bitrate(quality.target().bitrate);
     let mut cached_frame = None;
+    let mut captured_since_metrics = 0u64;
+    let mut metrics_previous_sent = 0u64;
     let mut last_video = Instant::now() - Duration::from_secs(2);
     while !sender.stopped() {
         let start = Instant::now();
         if quality_at.elapsed() > Duration::from_secs(2) {
             let stats = sender.statistics();
+            lrd_session::diagnostics::record(lrd_session::diagnostics::Sample {
+                rtt_ms: (stats.rtt_ms > 0.).then_some(stats.rtt_ms),
+                encode_ms: (encode_average > 0.).then_some(encode_average),
+                capture_fps: Some(
+                    captured_since_metrics as f64 / quality_at.elapsed().as_secs_f64(),
+                ),
+                transport_bitrate_bps: Some(
+                    ((stats.sent_bytes.saturating_sub(metrics_previous_sent) as f64) * 8.
+                        / quality_at.elapsed().as_secs_f64()) as u64,
+                ),
+                encoder_target_bitrate_bps: Some(quality.target().bitrate as u64),
+                encoder_hardware: encoder.hardware_active(),
+                sent_bytes: Some(stats.sent_bytes),
+                received_bytes: Some(stats.received_bytes),
+                queue_stalls: Some(stats.queue_full),
+                ..Default::default()
+            });
+            captured_since_metrics = 0;
+            metrics_previous_sent = stats.sent_bytes;
             if let Some(target) = quality.observe(
                 encode_average,
                 stats.rtt_ms,
@@ -685,6 +706,7 @@ fn serve(
         }
         let changed = match capture.frame() {
             Ok(Some(frame)) => {
+                captured_since_metrics += 1;
                 cached_frame = Some(frame);
                 true
             }

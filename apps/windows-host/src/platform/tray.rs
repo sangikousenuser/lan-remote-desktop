@@ -163,6 +163,7 @@ unsafe extern "system" fn proc(
                     (5, "転送をキャンセル"),
                     (6, "切断 / 接続猶予を終了"),
                     (7, "新しい接続の許可を切り替え"),
+                    (10, "性能ログを書き出す…"),
                     (8, "Hostを終了"),
                 ] {
                     AppendMenuW(menu, MF_STRING, id, &HSTRING::from(title))?;
@@ -184,7 +185,13 @@ unsafe extern "system" fn proc(
                 match id {
                     1 => {
                         let text = info().lock().map_err(|_| "tray lock")?.clone();
-                        MessageBoxW(window,&HSTRING::from(format!("{text}\n\n新規接続: {}\n保存先: Downloads\\LAN Remote Desktop\n右クリックから送信・切断・終了できます。",if remote::accepting(){"許可"}else{"停止"})),w!("LAN Remote Desktop"),MB_OK);
+                        let metrics=lrd_session::diagnostics::latest().map(|s|{
+                            let value=|v:Option<f64>|v.map(|v|format!("{v:.1}")).unwrap_or_else(||"—".into());
+                            format!("\n\nRTT {} ms / encode {} ms / capture {} fps\nCPU {}% / RAM {} MiB / codec {}\nログ取りこぼし: {}",
+                                value(s.rtt_ms),value(s.encode_ms),value(s.capture_fps),value(s.cpu_percent),value(s.resident_bytes.map(|n|n as f64/1048576.)),
+                                s.encoder_hardware.map(|b|if b{"GPU"}else{"software"}).unwrap_or("未測定"),lrd_session::diagnostics::dropped_samples())
+                        }).unwrap_or_default();
+                        MessageBoxW(window,&HSTRING::from(format!("{text}\n\n新規接続: {}\n保存先: Downloads\\LAN Remote Desktop{metrics}",if remote::accepting(){"許可"}else{"停止"})),w!("LAN Remote Desktop"),MB_OK);
                     }
                     2 | 3 => {
                         if let Err(e) = choose(window, id == 3) {
@@ -211,6 +218,7 @@ unsafe extern "system" fn proc(
                     9 => {
                         open_transfer()?;
                     }
+                    10 => export_logs(window)?,
                     5 => remote::cancel_files(),
                     6 => remote::disconnect(),
                     7 => remote::toggle_accepting(),
@@ -229,6 +237,33 @@ unsafe extern "system" fn proc(
         return LRESULT(0);
     }
     unsafe { DefWindowProcW(window, message, wparam, lparam) }
+}
+unsafe fn export_logs(window: HWND) -> Result<()> {
+    unsafe {
+        let dialog: IFileSaveDialog =
+            CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER)?;
+        dialog.SetOptions(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_OVERWRITEPROMPT)?;
+        dialog.SetFileName(w!("LAN-Remote-Desktop-diagnostics.json"))?;
+        dialog.SetDefaultExtension(w!("json"))?;
+        if dialog.Show(window).is_err() {
+            return Ok(());
+        }
+        let selected = dialog.GetResult()?.GetDisplayName(SIGDN_FILESYSPATH)?;
+        let path = selected.to_string();
+        CoTaskMemFree(Some(selected.0.cast()));
+        let path = path?;
+        std::thread::spawn(move || {
+            let result = lrd_session::diagnostics::export(std::path::Path::new(&path));
+            let message=match result {Ok(count)=>format!("数値ログを書き出しました（{count}件）。画面・入力・クリップボード本文は含みません。"),Err(_)=>"ログを書き出せませんでした。アプリの保存領域以外の保存先を選択してください。".into()};
+            MessageBoxW(
+                None,
+                &HSTRING::from(message),
+                w!("性能ログ"),
+                MB_OK | MB_ICONINFORMATION,
+            );
+        });
+        Ok(())
+    }
 }
 unsafe fn choose(window: HWND, folder: bool) -> Result<()> {
     unsafe {

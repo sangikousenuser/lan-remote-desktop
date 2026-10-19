@@ -300,6 +300,19 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
                 }
                 // Only a verified stage under this user's update directory.
                 let _ = std::fs::remove_dir_all(stage);
+                #[cfg(target_os = "macos")]
+                {
+                    // The headless watcher is a separate process. Load its new
+                    // signed-package image too; a disabled agent is not enabled.
+                    let domain = format!("gui/{}/local.lanremotedesktop.agent", unsafe {
+                        libc::getuid()
+                    });
+                    let _ = Command::new("/bin/launchctl")
+                        .args(["kickstart", "-k", &domain])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                }
                 Ok(true)
             }
             _ => {

@@ -18,6 +18,9 @@ extern void lrd_cancel_files(void);
 extern bool lrd_clipboard_send(uint8_t,const uint8_t *,size_t);
 extern bool lrd_control_json(const uint8_t *,size_t);
 extern void lrd_startup_ready(void);
+extern char *lrd_resource_statistics_json(void);
+extern void lrd_record_render_metrics(double,double,double,uint64_t,uint64_t,uint64_t,uint64_t,bool);
+extern bool lrd_export_numeric_logs(const char *);
 
 
 // This bridge owns every CF/ObjC object. No borrowed image pointer crosses into Rust.
@@ -235,6 +238,10 @@ extern bool lrd_agent_configure(uint32_t index);
 @property(strong) NSWindow *window;
 @property(strong) NSTextField *status;
 @property(strong) NSTextField *metrics;
+@property(strong) NSDictionary *resourceStatistics;
+@property double lastMetricsAt;
+@property uint64_t lastMetricsDecoded;
+@property uint64_t lastMetricsPresented;
 @property(strong) NSView *videoContainer;
 @property(strong) MTKView *metalView;
 @property(strong) LRDSoftwareView *softwareView;
@@ -369,6 +376,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     NSMenu *appMenu = [NSMenu new];
     [appMenu addItemWithTitle:@"LAN Remote Desktopを終了" action:@selector(terminate:) keyEquivalent:@"q"];
     NSMenuItem *openVideo=[appMenu addItemWithTitle:@"検証用の映像ファイルを開く…" action:@selector(choose:) keyEquivalent:@"o"]; openVideo.target=self;
+    NSMenuItem *exportLogs=[appMenu addItemWithTitle:@"性能ログを書き出す…" action:@selector(exportLogs:) keyEquivalent:@""];exportLogs.target=self;
     appMenuItem.submenu = appMenu; NSApp.mainMenu = menu;
     NSMenuItem *viewItem = [NSMenuItem new]; [menu addItem:viewItem];
     NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"表示"];
@@ -464,6 +472,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     }
 }
 - (void)stop:(id)sender {
+    self.lastMetricsAt=0;self.lastMetricsDecoded=0;self.lastMetricsPresented=0;
     if (sender && self.remoteConnected) { [self disconnect:nil]; return; }
     (void)sender;
     if (self.decodeTimer) { dispatch_source_cancel(self.decodeTimer); self.decodeTimer = nil; dispatch_sync(self.decodeQueue, ^{}); }
@@ -488,6 +497,23 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
         self.renderer, atomic_load(&self.decoder->hardware) ? @"GPU" : @"software / 未初期化",
         (unsigned long long)atomic_load(&self.decoder->failures)];
     if(self.remoteConnected)self.metrics.stringValue=[self.metrics.stringValue stringByAppendingFormat:@"  /  RTT %.1f ms  /  %.1f MiB",self.rttMilliseconds,self.receivedBytes/1048576.0];
+    char *raw=lrd_resource_statistics_json();
+    if(raw){NSString *json=[NSString stringWithUTF8String:raw];lrd_free_string(raw);NSData *data=[json dataUsingEncoding:NSUTF8StringEncoding];
+        id value=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL]:nil;
+        if([value isKindOfClass:[NSDictionary class]])self.resourceStatistics=value;}
+    NSNumber *cpu=self.resourceStatistics[@"cpu_percent"],*memory=self.resourceStatistics[@"resident_bytes"];
+    if([cpu isKindOfClass:[NSNumber class]] && [memory isKindOfClass:[NSNumber class]])self.metrics.stringValue=[self.metrics.stringValue stringByAppendingFormat:@"  /  CPU %.1f%%  /  RAM %.1f MiB",cpu.doubleValue,memory.doubleValue/1048576.0];
+    uint64_t presentedCount=atomic_load(&self.decoder->presented);double dt=MAX(0.001,now-self.lastMetricsAt);
+    if(self.remoteConnected && self.lastMetricsAt>0 && decodedCount>=self.lastMetricsDecoded && presentedCount>=self.lastMetricsPresented)
+        lrd_record_render_metrics((decodedCount-self.lastMetricsDecoded)/dt,(presentedCount-self.lastMetricsPresented)/dt,self.rttMilliseconds,
+            atomic_load(&self.decoder->failures),atomic_load(&droppedNetworkFrames),self.sentBytes,self.receivedBytes,atomic_load(&self.decoder->hardware));
+    self.lastMetricsAt=now;self.lastMetricsDecoded=decodedCount;self.lastMetricsPresented=presentedCount;
+}
+- (void)exportLogs:(id)sender {
+    (void)sender;NSSavePanel *panel=[NSSavePanel savePanel];panel.allowedFileTypes=@[@"json"];panel.nameFieldStringValue=@"LAN-Remote-Desktop-diagnostics.json";
+    if([panel runModal]!=NSModalResponseOK)return;NSString *path=panel.URL.path;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{BOOL ok=lrd_export_numeric_logs(path.UTF8String);
+        dispatch_async(dispatch_get_main_queue(),^{self.status.stringValue=ok?@"性能の数値ログを書き出しました。画面・入力・クリップボード本文は含みません。":@"ログを書き出せませんでした。アプリの保存領域以外の保存先を選択してください。";});});
 }
 - (void)drawInMTKView:(MTKView *)view {
     LRDDecoder *decoder = self.decoder;
@@ -521,7 +547,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     uint64_t count = self.decoder ? atomic_load(&self.decoder->decoded) : 0;
     uint64_t rendered = self.decoder ? atomic_load(&self.decoder->presented) : 0;
     return @{@"schema": @1, @"test": self.remoteConnected ? @"remote_h264_decode_render" : @"local_h264_decode_render", @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
-        @"architecture": @LRD_ARCH, @"renderer": self.renderer ?: @"none",
+        @"architecture": @LRD_ARCH, @"renderer": self.renderer ?: @"none", @"local_statistics":self.resourceStatistics?:@{},
         @"hardware_decode": (self.decoder && atomic_load(&self.decoder->hardware) ? @YES : @NO),
         @"decoded_frames": @(count), @"rendered_frames": @(rendered), @"elapsed_seconds": @(seconds),
         @"decode_fps": @(count/seconds), @"render_fps": @(rendered/seconds),

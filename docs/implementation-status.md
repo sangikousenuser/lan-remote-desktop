@@ -17,7 +17,7 @@
 | 入力 | SendInput、JIS/US物理検出、かなON/英数OFF、Command変換、絶対/相対マウス、緊急解放、世代/順序検査 | Windows IME/配列/ゲーム別試験。secure desktop/UIPI制約 |
 | 再接続 | 120秒、同じ証明書・同じWindows session・secret ticket、TLS鍵/入力世代更新、手動切断抑止、初期化失敗で期限維持 | 実際の抜線、NICアドレス変更、121秒、復帰前後の入力試験 |
 | モニター/解像度 | 複数モニター選択、対応モード列挙、Mac物理/論理画素表示、比率維持、変更前journal、条件付き復元、猶予後/再起動時照合 | Windows表示ドライバーごとの変更/強制終了/手動変更試験 |
-| 品質/指標 | encode負荷/RTT/queueのヒステリシス、fps/bitrate制御、数値診断、送受信量、RTT、描画/復号fps | 実入力→光学表示遅延、損失/画面内容/入力頻度を使う品質制御の完成、ログ回転 |
+| 品質/指標 | encode負荷/RTT/queueのヒステリシス、fps/bitrate制御、数値診断、送受信量、RTT、描画/復号fps、CPU/RAM、7日/100MiBの数値ログと検査済みexport | 実入力→光学表示遅延、詳細工程時間/GPU使用率、転送速度/復帰回数、損失/画面内容/入力頻度を使う品質制御の完成 |
 | 音声 | WASAPI loopback、PCM多ch縮約、CoreAudio、bounded queue、Windowsのみ/両方、Macのみ制限案内 | Opus、デバイス変更/音映像同期/長時間実測。Windows muteで代用しない |
 | Clipboard | 双方向UTF8/PNG、SHA-256、サイズ/画素制限、反射抑制、停止 | Windows/macOSの各アプリで実動作確認 |
 | 転送 | 専用UI、双方向ファイル/フォルダー、階層/複数選択、進捗/取消、SHA-256、1MiB chunk、永続manifestと再開、capability受信、非上書き完成配置 | 実LANの両方向1GiB超、遅いディスク、アプリ再起動の受入試験。不要な部分データの整理UI |
@@ -53,3 +53,5 @@ High Sierraでの互換性は最低OSのロードコマンド検査やRosettaで
 公開先は https://github.com/sangikousenuser/lan-remote-desktop 。ユーザーの指定によりPublicリポジトリへソースを登録済みです。実行ファイル、端末鍵、個人用の診断JSONはGitに登録しません。Windowsでの新しい接続試験は「まだ試せない」との回答のため未実施のままです。コミット `74aeb9e` の3OS CIとWindows/Intel Macのパッケージ生成が成功しました: https://github.com/sangikousenuser/lan-remote-desktop/actions/runs/39140663687 。これはHigh Sierraや実LAN/GPUの合格ではありません。
 
 更新機能追加後のローカル検証: 通常59件成功（session 35、common 9、protocol 14、Mac TLS→VT 1）。ignored 2件のうち1件は起動監視の子プロセス用fixtureで、親テストから実行します。別の1件は前回実施した1GiB転送試験です。OS別CIへWindowsの実software MFT encode試験も追加しました。
+
+性能診断追加後のローカル通常テストは71件成功（common 9、protocol 14、session 41、transport 6、Mac TLS→VT 1）。Windows版は125%/150%等のDPI仮想化を避けるよう初期化を追加。GPU encoderが途中から出力しなくなった場合もsoftwareへ復帰する。画面ロック中の描画再試験は未合格として保留しており、復号300・描画0の結果を成功扱いにしない。
