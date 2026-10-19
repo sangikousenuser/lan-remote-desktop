@@ -75,3 +75,5 @@ NSIS 3が必要です。開発MacではMinGW版PEもクロスビルドしてい�
 公開リポジトリ: [sangikousenuser/lan-remote-desktop](https://github.com/sangikousenuser/lan-remote-desktop)。[GitHub Actions](https://github.com/sangikousenuser/lan-remote-desktop/actions)で3OSのビルド・テストを実行します。正式Releaseは未実装機能と実機ゲートの解消まで停止しています。
 
 GitHubでログインして成功した **Rust CI** を開くと、ページ下部の **Artifacts** から `windows-host-alpha` と `intel-macos-client-alpha` を取得できます。Windows側はダウンロードした外側のActions ZIPを展開し、含まれるSetupまたはHost ZIPを使用してください。これらは署名付き自動更新用の正式Releaseではありません。
+
+Macの「通信方式」メニューからTLS/TCP、TLS＋暗号化UDP、QUICを選択できます。選択は次回接続へ反映します。候補方式の本体統合・自動試験は実装済みですが、実Ethernetでの比較選定は未完了です。

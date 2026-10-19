@@ -4,6 +4,7 @@ use crate::{
     wire::{self, Packet},
     Result,
 };
+pub mod external;
 use std::{
     io::ErrorKind,
     net::{Shutdown, TcpStream},
@@ -43,13 +44,16 @@ impl Counters {
 pub struct Sender {
     priority: SyncSender<Packet>,
     bulk: SyncSender<Packet>,
-    socket: Arc<TcpStream>,
+    socket: Option<Arc<TcpStream>>,
     stopped: Arc<AtomicBool>,
     counters: Arc<Counters>,
     closing: Arc<AtomicBool>,
     identity: u64,
 }
 impl Sender {
+    pub fn terminated(&self) -> bool {
+        self.stopped.load(Ordering::Acquire)
+    }
     pub fn identity(&self) -> u64 {
         self.identity
     }
@@ -73,7 +77,9 @@ impl Sender {
     }
     pub fn abort(&self) {
         self.stopped.store(true, Ordering::Release);
-        let _ = self.socket.shutdown(Shutdown::Both);
+        if let Some(socket) = &self.socket {
+            let _ = socket.shutdown(Shutdown::Both);
+        }
     }
     pub fn stopped(&self) -> bool {
         self.stopped.load(Ordering::Acquire) || self.closing.load(Ordering::Acquire)
@@ -101,7 +107,7 @@ pub fn start(mut tls: Tls) -> Result<(Sender, Receiver<Packet>)> {
         identity: crate::random_u64()?,
         priority: priority_tx,
         bulk: bulk_tx,
-        socket: socket.clone(),
+        socket: Some(socket.clone()),
         stopped: stopped.clone(),
         counters: counters.clone(),
         closing: closing.clone(),

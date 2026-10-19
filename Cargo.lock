@@ -429,6 +429,7 @@ version = "0.9.0-alpha.1"
 dependencies = [
  "lrd-common",
  "lrd-session",
+ "lrd-transport",
  "serde",
  "serde_json",
 ]
@@ -470,6 +471,7 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "socket2",
  "tokio",
 ]
 
@@ -487,6 +489,7 @@ dependencies = [
  "image",
  "lrd-common",
  "lrd-session",
+ "lrd-transport",
  "serde",
  "serde_json",
  "windows",

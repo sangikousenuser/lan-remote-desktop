@@ -11,6 +11,7 @@ extern char *lrd_interfaces_json(void);
 extern void lrd_free_string(char *);
 extern void lrd_discover(uint32_t);
 extern void lrd_connect(uint32_t, const char *);
+extern void lrd_set_transport(uint8_t);
 extern void lrd_disconnect(void);
 extern bool lrd_input_json(const uint8_t *, size_t);
 extern void lrd_send_file(const char *);
@@ -387,6 +388,16 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     mode.target=self; mode.keyEquivalentModifierMask=NSEventModifierFlagControl|NSEventModifierFlagOption;
     NSMenuItem *command=[viewMenu addItemWithTitle:@"CommandをWindowsキーに割り当て" action:@selector(commandMode:) keyEquivalent:@""];
     command.target=self;
+    NSMenuItem *transportItem=[NSMenuItem new];[menu addItem:transportItem];
+    NSMenu *transportMenu=[[NSMenu alloc] initWithTitle:@"通信方式"];transportItem.submenu=transportMenu;
+    NSInteger transportMode=[[NSUserDefaults standardUserDefaults] integerForKey:@"transportMode"];
+    if(transportMode<0||transportMode>2)transportMode=0;
+    lrd_set_transport((uint8_t)transportMode);
+    NSArray *transportTitles=@[@"TLS/TCP",@"TLS＋暗号化UDP",@"QUIC"];
+    for(NSUInteger i=0;i<transportTitles.count;i++){
+        NSMenuItem *item=[transportMenu addItemWithTitle:transportTitles[i] action:@selector(transportMode:) keyEquivalent:@""];
+        item.target=self;item.tag=(NSInteger)i;item.state=(i==(NSUInteger)transportMode)?NSControlStateValueOn:NSControlStateValueOff;
+    }
     NSEventMask mask=NSEventMaskKeyDown|NSEventMaskKeyUp|NSEventMaskFlagsChanged|NSEventMaskMouseMoved|NSEventMaskLeftMouseDown|NSEventMaskLeftMouseUp|NSEventMaskRightMouseDown|NSEventMaskRightMouseUp|NSEventMaskOtherMouseDown|NSEventMaskOtherMouseUp|NSEventMaskLeftMouseDragged|NSEventMaskRightMouseDragged|NSEventMaskOtherMouseDragged|NSEventMaskScrollWheel;
     __weak LRDApplication *weakSelf=self;
     self.inputMonitor=[NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *e){return [weakSelf handleInput:e];}];

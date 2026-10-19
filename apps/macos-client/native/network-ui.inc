@@ -1,3 +1,11 @@
+- (void)transportMode:(NSMenuItem *)sender {
+    if(self.remoteConnected){self.status.stringValue=@"通信方式は切断してから変更してください。";return;}
+    if(sender.tag<0||sender.tag>2)return;
+    lrd_set_transport((uint8_t)sender.tag);
+    [[NSUserDefaults standardUserDefaults] setInteger:sender.tag forKey:@"transportMode"];
+    for(NSMenuItem *item in sender.menu.itemArray)item.state=(item==sender)?NSControlStateValueOn:NSControlStateValueOff;
+    self.status.stringValue=@"次回接続の通信方式を変更しました。接続できない場合はWindowsの限定Firewall規則を確認してください。";
+}
 - (void)reloadInterfaces {
     char *json=lrd_interfaces_json();
     NSData *data=json ? [[NSString stringWithUTF8String:json] dataUsingEncoding:NSUTF8StringEncoding] : nil;

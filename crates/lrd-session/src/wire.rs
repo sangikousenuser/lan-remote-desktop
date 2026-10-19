@@ -73,6 +73,22 @@ pub struct Hello {
     pub nonce: u64,
     #[serde(default)]
     pub resume_token: Option<String>,
+    #[serde(default, skip_serializing_if = "TransportMode::is_tcp")]
+    pub transport: TransportMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportMode {
+    #[default]
+    Tcp,
+    Hybrid,
+    Quic,
+}
+impl TransportMode {
+    pub fn is_tcp(&self) -> bool {
+        *self == Self::Tcp
+    }
 }
 
 #[derive(Serialize, Deserialize)]

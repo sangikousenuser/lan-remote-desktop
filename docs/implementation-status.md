@@ -24,7 +24,7 @@
 | Drag & Drop | Finder→Mac転送/映像画面、Explorer→Windows専用画面から固定受信先へ転送 | 任意Explorer/Finder位置への直接リモートOLE/File Promise連携 |
 | 常駐/配布 | Windows tray/専用転送画面、同一NICで待受再構築、NSIS Per-user/Per-machine、任意のログイン時起動、Mac LaunchAgent登録/解除、.app/ZIP | 両Windowsモードのインストール/アンインストール実機、High Sierra LaunchAgent |
 | 更新 | HTTPS取得、埋込みEd25519署名、Stable/CPU/OS/protocol/hash/パス検査、private staging、次回起動helper、backup/journal、起動応答/生存監視、失敗復元、失敗版blocklist | 管理者所有の配置への権限分離・署名公開workflow・実際の2版アプリでの更新試験。Stableはまだ未公開 |
-| Q50 | QUIC DATAGRAM/TLS+AEAD UDPの両候補、相互認証/両端承認、暗号/replay検査、同じH.264とbulkの比較CLI、loopback 300frameと8MiB成功 | 本体の映像/入力/音声/再開への接続、実Ethernet性能/損失/長時間と最終方式選定。live既定はTLS/TCP |
+| Q50 | QUIC DATAGRAM/TLS+AEAD UDPの両候補、相互認証/両端承認、本体の映像/音声/入力/転送/再開へ接続、通信方式メニュー、暗号/replay/世代検査、共通比較CLI | 実Ethernet性能/損失/長時間と最終方式選定。live既定はTLS/TCP |
 | 固定IP | OSのDHCP/Link-Localを利用。Firewall限定設定スクリプトを同梱 | 狭い管理者helper、snapshot/rollback、衝突検出、両端ローカルウィザード |
 | CI/正式公開 | Public repo、3OS fmt/clippy/tests/buildとWindows NSIS/Intel .app生成成功、alpha取得可能、正式公開を拒否するゲート | 追加変更のActions検証、実機ゲート、署名公開workflowの完成 |
 
@@ -55,3 +55,5 @@ High Sierraでの互換性は最低OSのロードコマンド検査やRosettaで
 更新機能追加後のローカル検証: 通常59件成功（session 35、common 9、protocol 14、Mac TLS→VT 1）。ignored 2件のうち1件は起動監視の子プロセス用fixtureで、親テストから実行します。別の1件は前回実施した1GiB転送試験です。OS別CIへWindowsの実software MFT encode試験も追加しました。
 
 性能診断追加後のローカル通常テストは71件成功（common 9、protocol 14、session 41、transport 6、Mac TLS→VT 1）。Windows版は125%/150%等のDPI仮想化を避けるよう初期化を追加。GPU encoderが途中から出力しなくなった場合もsoftwareへ復帰する。画面ロック中の描画再試験は未合格として保留しており、復号300・描画0の結果を成功扱いにしない。
+
+本体Transport統合後: 通常78件成功（common 9、protocol 14、session 43、transport 9、Mac codec 3）。Hybrid/QUICともnative adapterの制御/世代/手動終了と実VT復号を確認。Windows由来fixtureのCI試験も両候補経由のVT復号へ拡張する。

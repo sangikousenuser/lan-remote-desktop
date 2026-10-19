@@ -9,8 +9,8 @@ use lrd_session::{
 use std::{
     ffi::{c_char, CStr, CString},
     sync::{
-        atomic::{AtomicU64, Ordering},
-        Mutex, OnceLock,
+        atomic::{AtomicU64, AtomicU8, Ordering},
+        Arc, Mutex, OnceLock,
     },
     time::{Duration, Instant},
 };
@@ -26,6 +26,13 @@ struct Active {
 }
 static ACTIVE: OnceLock<Mutex<Option<Active>>> = OnceLock::new();
 static GENERATION: AtomicU64 = AtomicU64::new(0);
+static TRANSPORT: AtomicU8 = AtomicU8::new(0);
+#[no_mangle]
+pub extern "C" fn lrd_set_transport(mode: u8) {
+    if mode <= 2 {
+        TRANSPORT.store(mode, Ordering::Release);
+    }
+}
 fn active() -> &'static Mutex<Option<Active>> {
     ACTIVE.get_or_init(|| Mutex::new(None))
 }
@@ -78,6 +85,11 @@ pub unsafe extern "C" fn lrd_connect(index: u32, address: *const c_char) {
         return;
     };
     let address = address.to_owned();
+    let transport = match TRANSPORT.load(Ordering::Acquire) {
+        1 => wire::TransportMode::Hybrid,
+        2 => wire::TransportMode::Quic,
+        _ => wire::TransportMode::Tcp,
+    };
     let generation = GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
     if let Ok(mut old) = active().lock() {
         if let Some(session) = old.take() {
@@ -93,7 +105,14 @@ pub unsafe extern "C" fn lrd_connect(index: u32, address: *const c_char) {
                 return;
             }
             let mut established = false;
-            let result = connection(index, &address, generation, &mut resume, &mut established);
+            let result = connection(
+                index,
+                &address,
+                generation,
+                transport,
+                &mut resume,
+                &mut established,
+            );
             if GENERATION.load(Ordering::Acquire) != generation {
                 return;
             }
@@ -153,6 +172,7 @@ fn connection(
     index: u32,
     address: &str,
     generation: u64,
+    transport: wire::TransportMode,
     resume: &mut Option<Resume>,
     established: &mut bool,
 ) -> Result<()> {
@@ -160,7 +180,7 @@ fn connection(
         Some(previous) => Nic::select_mac(&previous.nic_mac)?,
         None => Nic::select(index)?,
     };
-    let identity = Identity::load_or_create(&data_directory()?)?;
+    let identity = Arc::new(Identity::load_or_create(&data_directory()?)?);
     status(generation, "Ethernet経由で暗号化接続しています…");
     let remote = address.parse::<std::net::SocketAddr>().or_else(|_| {
         address
@@ -195,6 +215,7 @@ fn connection(
             user_session: hello.user_session,
             nonce: lrd_session::random_u64()?,
             resume_token: resume.as_ref().map(|r| r.token.clone()),
+            transport,
         },
     )?
     .write(&mut tls)?;
@@ -248,8 +269,16 @@ fn connection(
         user_session: hello.user_session,
         nic_mac: nic.mac.clone(),
     });
+    let (sender, receiver) = lrd_transport::live::start(
+        tls,
+        lrd_transport::Scope::Ethernet(nic.clone()),
+        identity,
+        true,
+        transport,
+        peer.clone(),
+        config.input_epoch,
+    )?;
     *established = true;
-    let (sender, receiver) = channel::start(tls)?;
     let files = lrd_session::file_worker::start(peer.clone(), sender.clone(), move |message| {
         event(generation, 5, message.as_bytes())
     })?;
@@ -483,6 +512,9 @@ mod tests {
             1,
             "Windows MFT output was not decoded by VideoToolbox"
         );
+        for mode in [wire::TransportMode::Hybrid, wire::TransportMode::Quic] {
+            datagram_video_probe(mode, bytes.clone());
+        }
     }
     #[test]
     fn tls_video_reaches_real_videotoolbox_decoder() {
@@ -520,5 +552,89 @@ mod tests {
         );
         server.join().unwrap();
         std::fs::remove_dir_all(root).unwrap();
+    }
+    fn datagram_video_probe(mode: wire::TransportMode, bytes: Vec<u8>) {
+        unsafe extern "C" {
+            fn lrd_decode_annexb_probe(bytes: *const u8, length: usize) -> u64;
+        }
+        let root = std::env::temp_dir().join(format!(
+            "lrd-native-codec-{}",
+            lrd_session::random_u64().unwrap()
+        ));
+        let host = Arc::new(Identity::load_or_create(&root.join("host")).unwrap());
+        let client = Arc::new(Identity::load_or_create(&root.join("client")).unwrap());
+        let listener = lrd_transport::Scope::LoopbackDiagnostics.listen().unwrap();
+        let address = listener.local_addr().unwrap();
+        let pin = host.fingerprint();
+        let expected = bytes.clone();
+        let server = std::thread::spawn(move || {
+            let mut tls = Tls::server(listener.accept().unwrap().0, &host).unwrap();
+            let peer = tls::approve(&mut tls, &host, false, |_| true).unwrap();
+            let (sender, receiver) = lrd_transport::live::start(
+                tls,
+                lrd_transport::Scope::LoopbackDiagnostics,
+                host,
+                false,
+                mode,
+                peer,
+                1,
+            )
+            .unwrap();
+            sender
+                .send_bulk(Packet {
+                    kind: wire::VIDEO,
+                    payload: bytes,
+                })
+                .unwrap();
+            loop {
+                let packet = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+                if packet.kind == wire::CLOSE {
+                    break;
+                }
+            }
+            sender.abort();
+        });
+        let mut tls = Tls::client(
+            std::net::TcpStream::connect(address).unwrap(),
+            &client,
+            Some(pin),
+        )
+        .unwrap();
+        let peer = tls::approve(&mut tls, &client, true, |_| true).unwrap();
+        let (sender, receiver) = lrd_transport::live::start(
+            tls,
+            lrd_transport::Scope::LoopbackDiagnostics,
+            client,
+            true,
+            mode,
+            peer,
+            1,
+        )
+        .unwrap();
+        let packet = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(packet.kind, wire::VIDEO);
+        assert_eq!(packet.payload, expected);
+        assert_eq!(
+            unsafe { lrd_decode_annexb_probe(packet.payload.as_ptr(), packet.payload.len()) },
+            1
+        );
+        sender.close();
+        server.join().unwrap();
+        sender.abort();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn hybrid_video_reaches_real_videotoolbox_decoder() {
+        datagram_video_probe(
+            wire::TransportMode::Hybrid,
+            include_bytes!("../../../assets/test-frame.h264").to_vec(),
+        );
+    }
+    #[test]
+    fn quic_video_reaches_real_videotoolbox_decoder() {
+        datagram_video_probe(
+            wire::TransportMode::Quic,
+            include_bytes!("../../../assets/test-frame.h264").to_vec(),
+        );
     }
 }

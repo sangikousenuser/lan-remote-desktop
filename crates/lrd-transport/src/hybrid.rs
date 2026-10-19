@@ -71,7 +71,7 @@ impl Hybrid {
         .await??;
         Self::establish(tls, udp, scope, peer, false).await
     }
-    async fn establish(
+    pub(crate) async fn establish(
         mut tls: Tls,
         udp: UdpSocket,
         scope: Scope,
@@ -104,6 +104,7 @@ impl Hybrid {
                 if udp.local_addr()?.ip() != tls.socket().local_addr()?.ip() {
                     return fail("UDP/TLS interface mismatch");
                 }
+                socket2_buffers(&udp)?;
                 udp.connect(remote)?;
                 udp.set_nonblocking(true)?;
                 let (sender, receiver) = channel::start(tls)?;
@@ -179,6 +180,22 @@ impl Hybrid {
     pub fn close(&self) {
         self.sender.close();
     }
+    pub(crate) async fn finish(&self) -> Result<()> {
+        self.sender.close();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !self.sender.terminated() {
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            }
+        })
+        .await?;
+        Ok(())
+    }
+}
+fn socket2_buffers(socket: &UdpSocket) -> Result<()> {
+    let socket = socket2::SockRef::from(socket);
+    socket.set_recv_buffer_size(1024 * 1024)?;
+    socket.set_send_buffer_size(1024 * 1024)?;
+    Ok(())
 }
 impl Drop for Hybrid {
     fn drop(&mut self) {

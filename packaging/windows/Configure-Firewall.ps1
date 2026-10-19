@@ -10,7 +10,7 @@ if ($adapter.Virtual -or -not $adapter.HardwareInterface -or -not $adapter.Conne
 $prefix = 'LANRemoteDesktop-' + (Get-FileHash $exe -Algorithm SHA256).Hash.Substring(0,12) + '-' + $InterfaceIndex
 if ($Remove) { Get-NetFirewallRule -Name ($prefix + '*') -ErrorAction SilentlyContinue | Remove-NetFirewallRule; return }
 $tcpPorts = @(0..31 | ForEach-Object { 47990 + $_ * 32 })
-$udpPorts = @($tcpPorts | ForEach-Object { $_ + 1 })
+$udpPorts = @($tcpPorts | ForEach-Object { $_ + 1; $_ + 2 })
 foreach ($item in @(@('TCP',$tcpPorts),@('UDP',$udpPorts))) {
   Get-NetFirewallRule -Name ($prefix + '-' + $item[0]) -ErrorAction SilentlyContinue | Remove-NetFirewallRule
   New-NetFirewallRule -Name ($prefix + '-' + $item[0]) -DisplayName ('LAN Remote Desktop — ' + $adapter.Name + ' ' + $item[0]) -Direction Inbound -Action Allow -Enabled True -Profile Any -Program $exe -Protocol $item[0] -LocalPort $item[1] -InterfaceAlias $adapter.Name -RemoteAddress LocalSubnet -EdgeTraversalPolicy Block | Out-Null

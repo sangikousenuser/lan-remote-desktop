@@ -55,6 +55,17 @@ fn transport() -> Result<Arc<TransportConfig>> {
 }
 impl Listener {
     pub fn bind(scope: Scope, identity: &Identity) -> Result<Self> {
+        let socket = scope.udp()?;
+        Self::bind_socket(scope, identity, socket)
+    }
+    pub(crate) fn bind_socket(
+        scope: Scope,
+        identity: &Identity,
+        socket: std::net::UdpSocket,
+    ) -> Result<Self> {
+        if socket.local_addr()?.ip() != scope.address() || !scope.current() {
+            return fail("QUIC listener is outside the selected scope");
+        }
         let mut tls = tls::server_configuration_with_provider(identity, media_provider())?;
         tls.alpn_protocols = vec![b"lrd-q50-v1".to_vec()];
         tls.max_early_data_size = 0;
@@ -63,7 +74,6 @@ impl Listener {
         ));
         config.transport_config(transport()?);
         config.migration(false);
-        let socket = scope.udp()?;
         socket.set_nonblocking(true)?;
         let endpoint = Endpoint::new(
             quinn::EndpointConfig::default(),
@@ -262,6 +272,17 @@ impl Quic {
     }
     pub fn close(&self) {
         self.connection.close(VarInt::from_u32(0), b"closed");
+    }
+    pub(crate) async fn finish(&self) -> Result<()> {
+        self.send_reliable(Packet {
+            kind: wire::CLOSE,
+            payload: Vec::new(),
+        })
+        .await?;
+        let mut stream = self.send.lock().await;
+        stream.finish()?;
+        tokio::time::timeout(Duration::from_secs(5), stream.stopped()).await??;
+        Ok(())
     }
 }
 impl Drop for Quic {

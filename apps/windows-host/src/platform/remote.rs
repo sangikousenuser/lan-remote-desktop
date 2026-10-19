@@ -382,7 +382,7 @@ fn run_once(args: &[String]) -> Result<()> {
 }
 fn serve(
     socket: std::net::TcpStream,
-    identity: &Identity,
+    identity: &Arc<Identity>,
     nic: Nic,
     user_session: u32,
     adapter: u32,
@@ -402,6 +402,7 @@ fn serve(
             user_session,
             nonce: lrd_session::random_u64()?,
             resume_token: None,
+            transport: wire::TransportMode::Tcp,
         },
     )?
     .write(&mut tls)?;
@@ -410,6 +411,7 @@ fn serve(
         return Err("HELLO required".into());
     }
     let hello: Hello = hello.parse()?;
+    let transport = hello.transport;
     if hello.major != 1
         || hello.role != "client"
         || (hello.user_session != 0 && hello.user_session != user_session)
@@ -510,9 +512,18 @@ fn serve(
     };
     lease.check_deadline()?;
     Packet::json(wire::CONFIG, &config)?.write(&mut tls)?;
+    let (sender, events) = lrd_transport::live::start(
+        tls,
+        lrd_transport::Scope::Ethernet(nic.clone()),
+        identity.clone(),
+        false,
+        transport,
+        peer.clone(),
+        config.input_epoch,
+    )?;
+    lease.check_deadline()?;
     lease.live = true;
     lease.token = config.resume_token.clone();
-    let (sender, events) = channel::start(tls)?;
     if let Ok(mut slot) = session().lock() {
         *slot = Some((sender.clone(), manual.clone()));
     }

@@ -3,6 +3,7 @@
 pub mod benchmark;
 pub mod crypto;
 pub mod hybrid;
+pub mod live;
 pub mod quic;
 use lrd_session::{fail, network::Nic, Result};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
@@ -12,6 +13,12 @@ pub enum Channel {
     Quic(Box<quic::Quic>),
 }
 impl Channel {
+    pub async fn finish(&self) -> Result<()> {
+        match self {
+            Self::Hybrid(t) => t.finish().await,
+            Self::Quic(t) => t.finish().await,
+        }
+    }
     pub async fn send_datagram(&self, kind: u8, bytes: &[u8]) -> Result<()> {
         match self {
             Self::Hybrid(t) => t.send_datagram(kind, bytes).await,
