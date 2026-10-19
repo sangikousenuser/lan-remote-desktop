@@ -34,10 +34,7 @@ pub extern "C" fn lrd_agent_configure(index: u32) -> bool {
 }
 pub fn run() -> Result<()> {
     let path = identity::data_directory()?.join("agent-ethernet.json");
-    let bytes = std::fs::read(path)?;
-    if bytes.len() > 4096 {
-        return Err("invalid agent configuration".into());
-    }
+    let bytes = identity::read_private(&path, 4096)?;
     let selection: Selection = serde_json::from_slice(&bytes)?;
     if selection.mac.len() > 32 || selection.mac.is_empty() {
         return Err("invalid Ethernet identity".into());
@@ -49,13 +46,19 @@ pub fn run() -> Result<()> {
             .into_iter()
             .find(|n| n.mac == selection.mac)
         {
-            let key = (nic.index, nic.address, nic.mac.clone());
+            let key = (nic.index, nic.address, nic.prefix, nic.mac.clone());
             if generation.as_ref() != Some(&key) {
                 generation = Some(key);
                 notified = false;
             }
             if !notified {
-                if let Ok(hosts) = network::discover(&nic, Duration::from_secs(3)) {
+                if let Ok(mut hosts) = network::discover(&nic, Duration::from_secs(3)) {
+                    crate::preferred::prioritize(
+                        &mut hosts,
+                        &nic.mac,
+                        crate::preferred::load().as_ref(),
+                        &crate::preferred::known(),
+                    );
                     if let Some((address, _)) = hosts.first() {
                         if let Ok(address) = CString::new(address.to_string()) {
                             unsafe {

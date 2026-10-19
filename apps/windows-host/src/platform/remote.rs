@@ -127,6 +127,36 @@ static ACTIVE_FILES: std::sync::OnceLock<
 fn active_files() -> &'static std::sync::Mutex<Option<lrd_session::file_worker::Files>> {
     ACTIVE_FILES.get_or_init(|| std::sync::Mutex::new(None))
 }
+fn relative_mouse_candidate(monitor: windows::Win32::Foundation::RECT) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    unsafe {
+        let window = GetForegroundWindow();
+        if window.is_invalid()
+            || window == GetDesktopWindow()
+            || window == GetShellWindow()
+            || !IsWindowVisible(window).as_bool()
+            || GetWindowLongW(window, GWL_STYLE) as u32 & WS_POPUP.0 == 0
+        {
+            return false;
+        }
+        let mut pid = 0;
+        GetWindowThreadProcessId(window, Some(&mut pid));
+        if pid == 0 || pid == GetCurrentProcessId() {
+            return false;
+        }
+        let mut rect = windows::Win32::Foundation::RECT::default();
+        if GetWindowRect(window, &mut rect).is_err() {
+            return false;
+        }
+        let width = (monitor.right as i64 - monitor.left as i64).max(0);
+        let height = (monitor.bottom as i64 - monitor.top as i64).max(0);
+        let visible_width =
+            (rect.right.min(monitor.right) as i64 - rect.left.max(monitor.left) as i64).max(0);
+        let visible_height =
+            (rect.bottom.min(monitor.bottom) as i64 - rect.top.max(monitor.top) as i64).max(0);
+        width > 0 && height > 0 && visible_width * visible_height * 100 >= width * height * 95
+    }
+}
 
 static ACCEPTING: AtomicBool = AtomicBool::new(true);
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
@@ -713,6 +743,7 @@ fn serve(
     let mut capture_average = 0.;
     let mut file_meter = lrd_session::diagnostics::traffic::Meter::default();
     let mut resource_meter = lrd_session::diagnostics::resources::Meter::default();
+    let mut relative_candidate_windows = 0u8;
     let mut captured_since_metrics = 0u64;
     let mut metrics_previous_sent = 0u64;
     let mut last_video = Instant::now() - Duration::from_secs(2);
@@ -721,6 +752,15 @@ fn serve(
         if quality_at.elapsed() > Duration::from_secs(2) {
             let stats = sender.statistics();
             let elapsed = quality_at.elapsed().as_secs_f64();
+            let input_hz = input_events.swap(0, Ordering::Relaxed) as f64 / elapsed;
+            relative_candidate_windows = if change_fraction > 0.03
+                && input_hz >= 5.
+                && relative_mouse_candidate(capture.rect)
+            {
+                relative_candidate_windows.saturating_add(1)
+            } else {
+                0
+            };
             let remote = feedback
                 .lock()
                 .ok()
@@ -754,6 +794,7 @@ fn serve(
                 ),
                 encoder_target_bitrate_bps: Some(quality.target().bitrate as u64),
                 encoder_hardware: encoder.hardware_active(),
+                relative_mouse_suggested: Some(relative_candidate_windows >= 2),
                 sent_bytes: Some(stats.sent_bytes),
                 received_bytes: Some(stats.received_bytes),
                 queue_stalls: Some(stats.queue_full),
@@ -774,7 +815,7 @@ fn serve(
                 stats.queue_full.saturating_sub(previous_stalls),
                 remote,
                 change_fraction,
-                input_events.swap(0, Ordering::Relaxed) as f64 / elapsed,
+                input_hz,
             ) {
                 encoder.set_bitrate(target.bitrate);
                 eprintln!(

@@ -25,5 +25,5 @@
     if(![info[@"index"] isKindOfClass:[NSNumber class]] || ![info[@"address"] isKindOfClass:[NSString class]] || [info[@"address"] length]>128)return;
     [self reloadInterfaces];[self.interfaces selectItemWithTag:[info[@"index"] integerValue]];
     if(self.interfaces.selectedItem.tag!=[info[@"index"] integerValue])return;
-    self.address.stringValue=info[@"address"];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[self connect:nil];
+    [self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[self discover:nil];
 }

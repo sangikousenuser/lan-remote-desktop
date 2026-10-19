@@ -33,6 +33,7 @@ pub struct Sample {
     pub encoder_target_bitrate_bps: Option<u64>,
     pub encoder_hardware: Option<bool>,
     pub decoder_hardware: Option<bool>,
+    pub relative_mouse_suggested: Option<bool>,
     pub sent_bytes: Option<u64>,
     pub received_bytes: Option<u64>,
     pub decode_errors: Option<u64>,

@@ -85,8 +85,24 @@ pub extern "C" fn lrd_discover(index: u32) {
     std::thread::spawn(move || {
         let result = (|| -> Result<()> {
             let nic = Nic::select(index)?;
-            let found = network::discover(&nic, Duration::from_secs(3))?;
-            event(generation, 6, &serde_json::to_vec(&found)?);
+            let mut found = network::discover(&nic, Duration::from_secs(3))?;
+            let preferred = crate::preferred::load();
+            let known = crate::preferred::known();
+            crate::preferred::prioritize(&mut found, &nic.mac, preferred.as_ref(), &known);
+            let rows: Vec<_> = found
+                .iter()
+                .map(|(address, host)| {
+                    serde_json::json!([
+                        address,
+                        host,
+                        preferred
+                            .as_ref()
+                            .is_some_and(|last| last.matches(&nic.mac, host)),
+                        known.contains(&host.fingerprint)
+                    ])
+                })
+                .collect();
+            event(generation, 6, &serde_json::to_vec(&rows)?);
             Ok(())
         })();
         if let Err(e) = result {
@@ -299,6 +315,7 @@ fn connection(
         config.input_epoch,
     )?;
     *established = true;
+    let _ = crate::preferred::remember(peer.clone(), hello.user_session, nic.mac.clone());
     if was_resume {
         RECONNECTS.fetch_add(1, Ordering::Relaxed);
     }

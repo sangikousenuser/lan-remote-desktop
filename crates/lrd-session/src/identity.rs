@@ -64,7 +64,7 @@ pub fn write_private_new(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn read_private(path: &Path, maximum: u64) -> Result<Vec<u8>> {
+pub fn read_private(path: &Path, maximum: u64) -> Result<Vec<u8>> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > maximum {
         return fail("invalid identity file");
@@ -119,19 +119,30 @@ impl Identity {
         fingerprint(self.certificate.as_ref())
     }
     pub fn trusted(&self, certificate: &[u8]) -> Result<bool> {
+        Ok(self
+            .paired_fingerprints()?
+            .contains(&fingerprint(certificate)))
+    }
+    pub fn paired_fingerprints(&self) -> Result<Vec<String>> {
         let path = self.directory.join("paired.json");
         if !path.exists() {
-            return Ok(false);
+            return Ok(Vec::new());
         }
         let peers: Peers = serde_json::from_slice(&read_private(&path, 64 * 1024)?)?;
-        Ok(peers.certificates.contains(&fingerprint(certificate)))
+        if peers.certificates.len() > 32
+            || peers
+                .certificates
+                .iter()
+                .any(|pin| pin.len() != 64 || !pin.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return fail("invalid paired device list");
+        }
+        Ok(peers.certificates)
     }
     pub fn trust(&self, certificate: &[u8]) -> Result<()> {
         let path = self.directory.join("paired.json");
-        let mut peers: Peers = if path.exists() {
-            serde_json::from_slice(&read_private(&path, 64 * 1024)?)?
-        } else {
-            Peers::default()
+        let mut peers = Peers {
+            certificates: self.paired_fingerprints()?,
         };
         let key = fingerprint(certificate);
         if peers.certificates.contains(&key) {

@@ -146,13 +146,24 @@
         NSArray *found=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
         if (found.count==0) {self.status.stringValue=@"Hostが見つかりません。Windowsの --serve、ファイアウォール、有線アドレスを確認してください。";return;}
         NSPopUpButton *list=[[NSPopUpButton alloc] initWithFrame:NSMakeRect(0,0,420,30) pullsDown:NO];
-        for (NSArray *entry in found) {if (entry.count!=2)continue;NSDictionary *host=entry[1];[list addItemWithTitle:[NSString stringWithFormat:@"%@ — %@",host[@"name"],entry[0]]];list.lastItem.representedObject=entry[0];}
+        for (NSArray *entry in found) {if (entry.count<2)continue;NSDictionary *host=entry[1];BOOL previous=entry.count>2&&[entry[2] boolValue],known=entry.count>3&&[entry[3] boolValue];[list addItemWithTitle:[NSString stringWithFormat:@"%@%@ — %@",previous?@"前回接続候補: ":(known?@"登録済み候補: ":@""),host[@"name"],entry[0]]];list.lastItem.representedObject=entry[0];}
         NSAlert *alert=[NSAlert new];alert.messageText=@"接続先を選択";alert.informativeText=@"探索結果は未認証です。接続時に端末鍵と承認を確認します。";alert.accessoryView=list;
         [alert addButtonWithTitle:@"選択"];[alert addButtonWithTitle:@"キャンセル"];
         if ([alert runModal]==NSAlertFirstButtonReturn) self.address.stringValue=list.selectedItem.representedObject;
         self.status.stringValue=@"接続先を選びました。「接続」で認証と承認を開始します。";return;
     }
-    if(kind==10){id value=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];if([value isKindOfClass:[NSDictionary class]])self.remoteStatistics=value;return;}
+    if(kind==10){
+        id value=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+        if([value isKindOfClass:[NSDictionary class]]){
+            self.remoteStatistics=value;
+            id candidate=value[@"relative_mouse_suggested"];double now=CACurrentMediaTime();
+            if([candidate isKindOfClass:[NSNumber class]]&&[candidate boolValue]&&!self.relativeMouse&&now-self.lastRelativeSuggestion>60){
+                self.lastRelativeSuggestion=now;
+                self.status.stringValue=@"Windowsの全画面アプリを検出しました。ゲーム操作には「表示」→「相対マウス」または⌃⌥Rを選べます。";
+            }
+        }
+        return;
+    }
     if (kind==2) {
         NSDictionary *config=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
         BOOL firstConnection=!self.remoteConnected;

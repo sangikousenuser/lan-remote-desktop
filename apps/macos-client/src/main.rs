@@ -4,6 +4,8 @@ mod agent;
 mod metrics;
 #[cfg(target_os = "macos")]
 mod network;
+#[cfg(target_os = "macos")]
+mod preferred;
 
 #[cfg(target_os = "macos")]
 fn main() {

@@ -302,6 +302,7 @@ extern bool lrd_agent_configure(uint32_t index);
 @property uint64_t lastDecodedCount;
 @property double lastDecodedAt;
 @property BOOL relativeMouse;
+@property double lastRelativeSuggestion;
 @property BOOL windowsCommand;
 @property BOOL jisKeyboard;
 @property(strong) NSArray *monitors;
@@ -316,6 +317,7 @@ extern bool lrd_agent_configure(uint32_t index);
 @property uint32_t remoteHeight;
 @property uint32_t launchInterface;
 @property(copy) NSString *launchAddress;
+@property BOOL launchDiscovery;
 @property double rttMilliseconds;
 @property uint64_t receivedBytes;
 @property uint64_t sentBytes;
@@ -440,6 +442,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     if(!self.smoke)lrd_startup_ready();
     if (self.smoke) [self start:nil];
     if(self.launchAddress){[self.interfaces selectItemWithTag:self.launchInterface];self.address.stringValue=self.launchAddress;[self connect:nil];}
+    else if(self.launchDiscovery){[self.interfaces selectItemWithTag:self.launchInterface];[self discover:nil];}
 }
 - (void)fullscreen:(id)sender { (void)sender; [self.window toggleFullScreen:nil]; }
 - (void)choose:(id)sender {
@@ -690,6 +693,7 @@ int lrd_client_main(int argc, const char *const *argv) {
             if ([arg isEqualToString:@"--help"]) {
                 puts("LAN Remote Desktop macOS client\n  --video <H.264.mp4>\n  --smoke-test --report <result.json>\n  --software (explicit CPU renderer/decoder fallback)\nConnect to the Windows Host from the Ethernet toolbar."); return 0;
             } else if ([arg isEqualToString:@"--connect"] && i+2<argc){delegate.launchInterface=(uint32_t)strtoul(argv[++i],NULL,10);delegate.launchAddress=[NSString stringWithUTF8String:argv[++i]];}
+            else if ([arg isEqualToString:@"--discover"] && i+1<argc){delegate.launchInterface=(uint32_t)strtoul(argv[++i],NULL,10);delegate.launchDiscovery=YES;}
             else if ([arg isEqualToString:@"--smoke-test"]) delegate.smoke = YES;
             else if ([arg isEqualToString:@"--software"]) delegate.forceSoftware = YES;
             else if (([arg isEqualToString:@"--video"] || [arg isEqualToString:@"--report"]) && i + 1 < argc) {
@@ -722,7 +726,7 @@ void lrd_agent_discovered(uint32_t index,const char *address){
         if(running)[[NSDistributedNotificationCenter defaultCenter] postNotificationName:@"local.lanremotedesktop.discovered" object:nil userInfo:@{@"index":@(index),@"address":host} deliverImmediately:YES];
         else{
             NSURL *url=[NSBundle mainBundle].bundleURL;
-            [[NSWorkspace sharedWorkspace] launchApplicationAtURL:url options:NSWorkspaceLaunchDefault configuration:@{NSWorkspaceLaunchConfigurationArguments:@[@"--connect",[@(index) stringValue],host]} error:NULL];
+            [[NSWorkspace sharedWorkspace] launchApplicationAtURL:url options:NSWorkspaceLaunchDefault configuration:@{NSWorkspaceLaunchConfigurationArguments:@[@"--discover",[@(index) stringValue]]} error:NULL];
         }
     }
 }
