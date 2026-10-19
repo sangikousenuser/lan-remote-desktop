@@ -5,6 +5,7 @@ pub mod color;
 pub mod diagnostics;
 pub mod display_choice;
 pub mod file_worker;
+pub mod frame;
 pub mod h264;
 pub mod identity;
 pub mod network;

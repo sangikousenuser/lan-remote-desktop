@@ -25,12 +25,12 @@ static void audioFinished(void *context,AudioQueueRef queue,AudioQueueBufferRef 
     }
     if(data.length==13 || atomic_load(&buffers)>=6)return YES;
     AudioQueueBufferRef buffer=NULL;
-    if(AudioQueueAllocateBuffer(queue,(UInt32)data.length-13,&buffer)!=noErr)return NO;
+    if(AudioQueueAllocateBuffer(queue,(UInt32)data.length-13,&buffer)!=noErr){[self stop];return NO;}
     memcpy(buffer->mAudioData,b+13,data.length-13);buffer->mAudioDataByteSize=(UInt32)data.length-13;
     // Keep malformed floating point values away from the audio device.
     float *samples=buffer->mAudioData;for(NSUInteger i=0;i<(data.length-13)/4;i++)samples[i]=isfinite(samples[i])?fmaxf(-1,fminf(1,samples[i])):0;
     atomic_fetch_add(&buffers,1);
-    if(AudioQueueEnqueueBuffer(queue,buffer,0,NULL)!=noErr){atomic_fetch_sub(&buffers,1);AudioQueueFreeBuffer(queue,buffer);return NO;}
+    if(AudioQueueEnqueueBuffer(queue,buffer,0,NULL)!=noErr){atomic_fetch_sub(&buffers,1);AudioQueueFreeBuffer(queue,buffer);[self stop];return NO;}
     if(fresh && AudioQueueStart(queue,NULL)!=noErr){[self stop];return NO;}
     return YES;
 }

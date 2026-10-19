@@ -200,6 +200,9 @@ struct Capture {
     staging: ID3D11Texture2D,
     width: u32,
     height: u32,
+    surface_width: u32,
+    surface_height: u32,
+    rotation: lrd_session::frame::Rotation,
     rect: windows::Win32::Foundation::RECT,
 }
 struct Acquired<'a>(&'a IDXGIOutputDuplication);
@@ -247,15 +250,30 @@ impl Capture {
             let context = context.ok_or_else(|| windows::core::Error::from(E_FAIL))?;
             let duplication = output.DuplicateOutput(&device)?;
             let desc = duplication.GetDesc();
+            use lrd_session::frame::Rotation;
+            let rotation = match desc.Rotation {
+                DXGI_MODE_ROTATION_UNSPECIFIED | DXGI_MODE_ROTATION_IDENTITY => Rotation::Identity,
+                DXGI_MODE_ROTATION_ROTATE90 => Rotation::Clockwise90,
+                DXGI_MODE_ROTATION_ROTATE180 => Rotation::Clockwise180,
+                DXGI_MODE_ROTATION_ROTATE270 => Rotation::Clockwise270,
+                _ => {
+                    return Err(windows::core::Error::new(
+                        E_FAIL,
+                        "unknown desktop rotation",
+                    ))
+                }
+            };
+            let (width, height) = rotation.dimensions(desc.ModeDesc.Width, desc.ModeDesc.Height);
             if desc.ModeDesc.Width == 0
                 || desc.ModeDesc.Height == 0
                 || desc.ModeDesc.Width > 8192
                 || desc.ModeDesc.Height > 8192
-                || desc.Rotation != DXGI_MODE_ROTATION_IDENTITY
+                || rect.right as i64 - rect.left as i64 != width as i64
+                || rect.bottom as i64 - rect.top as i64 != height as i64
             {
                 return Err(windows::core::Error::new(
                     E_FAIL,
-                    "probe requires unrotated display <=8192 pixels",
+                    "capture dimensions changed or exceed 8192 pixels",
                 ));
             }
             let staging_desc = D3D11_TEXTURE2D_DESC {
@@ -279,8 +297,11 @@ impl Capture {
                 context,
                 duplication,
                 staging: staging.ok_or_else(|| windows::core::Error::from(E_FAIL))?,
-                width: desc.ModeDesc.Width,
-                height: desc.ModeDesc.Height,
+                width,
+                height,
+                surface_width: desc.ModeDesc.Width,
+                surface_height: desc.ModeDesc.Height,
+                rotation,
                 rect,
             })
         }
@@ -301,6 +322,14 @@ impl Capture {
             let texture: ID3D11Texture2D = resource
                 .ok_or_else(|| windows::core::Error::from(E_FAIL))?
                 .cast()?;
+            let mut source_desc = D3D11_TEXTURE2D_DESC::default();
+            texture.GetDesc(&mut source_desc);
+            if source_desc.Width != self.surface_width
+                || source_desc.Height != self.surface_height
+                || source_desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM
+            {
+                return Err(windows::core::Error::from(DXGI_ERROR_ACCESS_LOST));
+            }
             self.context.CopyResource(&self.staging, &texture);
             let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
             self.context
@@ -309,18 +338,24 @@ impl Capture {
                 context: &self.context,
                 texture: &self.staging,
             };
-            let row = self.width as usize * 4;
+            let row = self.surface_width as usize * 4;
             if mapped.pData.is_null() || (mapped.RowPitch as usize) < row {
                 return Err(windows::core::Error::from(E_FAIL));
             }
-            let mut pixels = vec![0; row * self.height as usize];
-            for y in 0..self.height as usize {
-                std::ptr::copy_nonoverlapping(
-                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
-                    pixels.as_mut_ptr().add(y * row),
-                    row,
-                );
-            }
+            let length = (mapped.RowPitch as usize)
+                .checked_mul(self.surface_height as usize - 1)
+                .and_then(|n| n.checked_add(row))
+                .filter(|n| *n <= isize::MAX as usize)
+                .ok_or_else(|| windows::core::Error::from(E_FAIL))?;
+            let source = std::slice::from_raw_parts(mapped.pData.cast::<u8>(), length);
+            let pixels = lrd_session::frame::copy_bgra(
+                source,
+                self.surface_width,
+                self.surface_height,
+                mapped.RowPitch as usize,
+                self.rotation,
+            )
+            .map_err(|_| windows::core::Error::from(E_FAIL))?;
             self.processing_ms
                 .set(processing_at.elapsed().as_secs_f64() * 1000.);
             Ok(Some(pixels))

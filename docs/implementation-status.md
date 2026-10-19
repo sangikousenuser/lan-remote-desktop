@@ -13,7 +13,7 @@
 | Ethernet/探索 | 物理有線を選択、送受信NIC/IPv4拘束、同一subnet限定、UDP broadcast、NIC監視、Windows weak-host/forwarding拒否 | 両OS/複数NICでの実パケット確認。DHCP/Link-LocalそのものはOSの機能 |
 | 端末認証 | TLS 1.3相互署名、exporter確認コード、両端初回承認、fingerprint保存、Mac毎回承認、前回の鍵/Windows sessionと既知の鍵を探索候補で優先 | 実機で拒否/鍵変更/非対称登録を操作確認 |
 | Host排他 | PC全体Global mutex、所有thread、ユーザーセッション識別、猶予中のlease保持 | Windows複数ログイン/別Mac競合。TCP/探索UDPを32組の排他的なユーザー別スロットで確保。非対話セッションは探索へ応答しない |
-| 映像 | DXGI staging、NV12、非同期HW H.264 MFT優先＋software fallback、NAL配信、VT/Metal/CPU描画、keyframe要求、静止時の再同期 | GPU surface共有、実HW MFT互換、60fps/低遅延・色・長時間試験 |
+| 映像 | DXGI staging、0/90/180/270度の向き補正、NV12、非同期HW H.264 MFT優先＋software fallback、NAL配信、VT/Metal/CPU描画、keyframe要求、静止時の再同期 | GPU surface共有、実HW MFT互換、回転実モニター、60fps/低遅延・色・長時間試験 |
 | 入力 | SendInput、JIS/US物理検出、かなON/英数OFF、Command変換、絶対/相対マウス、緊急解放、世代/順序検査、全画面アプリ/動き/入力の継続時に相対モードを案内 | Windows IME/配列/ゲーム別試験。secure desktop/UIPI制約。提案はゲーム識別の保証ではなく、切替はユーザー操作のみ |
 | 再接続 | 120秒、同じ証明書・同じWindows session・secret ticket、TLS鍵/入力世代更新、手動切断抑止、初期化失敗で期限維持、同じMACのNICで再探索、IP/port変更へ追従 | 実際の抜線、NICアドレス変更、121秒、復帰前後の入力試験 |
 | モニター/解像度 | 複数モニター選択、対応モード列挙、Mac物理/論理画素と実測decode/renderから初回モード選択、比率維持、自動調整OFF、変更前journal、条件付き復元、猶予後/再起動時照合 | Windows表示ドライバーごとの変更/強制終了/手動変更試験。自動選択は性能保証ではなく初期推定 |
@@ -32,7 +32,7 @@
 
 開発端末: Mac17,9 / Apple M5 Pro、macOS 27.0.1。Rust 1.99.0。Windows x64はMinGW cross build、Intel Mac版はcross build + Rosettaです。
 
-- Rust: common 9件、protocol 14件、session 49件、transport 10件、Mac 5件、network helper 8件、Macでは合計95件の通常テスト。これにPythonのMacパッケージ検査3件・Windows PE検査4件・公開パイプライン5件を実行。
+- Rust: common 9件、protocol 14件、session 52件、transport 10件、Mac 5件、network helper 8件、Macでは合計98件の通常テスト。これにPythonのMacパッケージ検査3件・Windows PE検査4件・公開パイプライン5件を実行。
 - セッション試験: 相互TLS・確認コード一致、片側拒否時の両方の登録禁止、別証明書pin拒否、双方向の256KiB×8パケットを8KiB socket bufferで同時送受信、期限/世代/サイズ/パス/署名異常。
 - 別途、ignored指定の1GiB超テストを実行済み。1GiB+123bytesを512チャンクで中断し、Receiverを作り直して残りを受信、全体SHA-256一致。182.47秒。この結果は転送エンジンのローカル試験であり実LAN試験ではありません。
 - Macの実アプリ: Ethernet不在の案内、専用転送画面、ローカル映像、全画面バー、Control+Command+Fによる解除。
@@ -67,3 +67,5 @@ High Sierraでの互換性は最低OSのロードコマンド検査やRosettaで
 初回自動解像度選択を追加後は85件成功。入力取得の根拠を「復号済み」から「描画完了」へ修正した。hardware decoder非対応はsoftwareへ復帰し、Metalの初期化/command失敗時も入力を解放してCPU描画へ切り替える。softwareで目標GPU性能を達成したとは扱わない。
 
 Mac更新の署名回帰を修正。journalを.app外へ置き、署名検証済みの完全なbundleをatomic exchangeで交換・復元する。署名済みfixtureの2試験で中断復元と再適用、独立変更の拒否を確認。Windows配布はCRTをstatic linkし、通常/delay importのDLLを梱包時に検査する。`5da6ca0` の3OS CIとcross-OS codecはrun 39190951552で成功。
+
+回転モニターのraw surfaceをdesktop座標へ補正し、表示寸法・入力座標を統一する。DXGIの[回転仕様](https://learn.microsoft.com/en-us/windows/desktop/direct3ddxgi/desktop-dup-api)に合わせ、パディング、四隅、tile境界、範囲外を3件で検証した。Windowsの既定音声endpoint変更を毎秒照合して再初期化し、Mac AudioQueueのallocate/enqueue失敗後も次のpacketで再初期化する。実際の表示向き・音声デバイス切替は最後の受入対象。

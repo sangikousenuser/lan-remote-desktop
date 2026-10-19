@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicU8, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use windows::Win32::{
     Media::{
@@ -34,12 +34,19 @@ fn capture(sender: &Sender, mode: &AtomicU8) -> Result<()> {
         let devices: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER)?;
         let device = devices.GetDefaultAudioEndpoint(eRender, eConsole)?;
+        let selected_device = device_id(&device)?;
         let client: IAudioClient = device.Activate(CLSCTX_INPROC_SERVER, None)?;
         let pointer = client.GetMixFormat()?;
         if pointer.is_null() {
             return Err("audio format unavailable".into());
         }
         let format = pointer.read_unaligned();
+        if !matches!(format.wFormatTag, 1 | 3 | 0xfffe)
+            || (format.wFormatTag == 0xfffe && format.cbSize < 22)
+        {
+            CoTaskMemFree(Some(pointer.cast()));
+            return Err("unsupported loopback format header".into());
+        }
         let mut float = format.wFormatTag == 3;
         if format.wFormatTag == 0xfffe {
             let ext = pointer.cast::<WAVEFORMATEXTENSIBLE>().read_unaligned();
@@ -58,6 +65,7 @@ fn capture(sender: &Sender, mode: &AtomicU8) -> Result<()> {
             || !(1..=8).contains(&channels)
             || !matches!(bits, 16 | 24 | 32)
             || (float && bits != 32)
+            || format.nBlockAlign as usize != channels * (bits / 8)
         {
             CoTaskMemFree(Some(pointer.cast()));
             return Err("unsupported loopback PCM".into());
@@ -81,7 +89,15 @@ fn capture(sender: &Sender, mode: &AtomicU8) -> Result<()> {
             }
         }
         let _stop = Stop(client);
+        let mut device_checked = Instant::now();
         while !sender.stopped() {
+            if device_checked.elapsed() >= Duration::from_secs(1) {
+                let current = devices.GetDefaultAudioEndpoint(eRender, eConsole)?;
+                if device_id(&current)? != selected_device {
+                    return Ok(());
+                }
+                device_checked = Instant::now();
+            }
             while capture.GetNextPacketSize()? > 0 {
                 let mut pointer = std::ptr::null_mut();
                 let mut frames = 0;
@@ -184,5 +200,16 @@ fn capture(sender: &Sender, mode: &AtomicU8) -> Result<()> {
             std::thread::sleep(Duration::from_millis(5));
         }
         Ok(())
+    }
+}
+fn device_id(device: &IMMDevice) -> Result<String> {
+    unsafe {
+        let pointer = device.GetId()?;
+        if pointer.is_null() {
+            return Err("audio endpoint identity unavailable".into());
+        }
+        let id = pointer.to_string();
+        CoTaskMemFree(Some(pointer.0.cast()));
+        Ok(id?)
     }
 }
