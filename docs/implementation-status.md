@@ -32,7 +32,7 @@
 
 開発端末: Mac17,9 / Apple M5 Pro、macOS 27.0.1。Rust 1.99.0。Windows x64はMinGW cross build、Intel Mac版はcross build + Rosettaです。
 
-- Rust: common 9件、protocol 14件、session 47件、transport 10件、Mac 5件、合計85件の通常テスト。これにPythonのパッケージ検査3件と公開パイプライン5件を実行。
+- Rust: common 9件、protocol 14件、session 47件、transport 10件、Mac 5件、合計85件の通常テスト。これにPythonのMacパッケージ検査3件・Windows PE検査4件・公開パイプライン5件を実行。
 - セッション試験: 相互TLS・確認コード一致、片側拒否時の両方の登録禁止、別証明書pin拒否、双方向の256KiB×8パケットを8KiB socket bufferで同時送受信、期限/世代/サイズ/パス/署名異常。
 - 別途、ignored指定の1GiB超テストを実行済み。1GiB+123bytesを512チャンクで中断し、Receiverを作り直して残りを受信、全体SHA-256一致。182.47秒。この結果は転送エンジンのローカル試験であり実LAN試験ではありません。
 - Macの実アプリ: Ethernet不在の案内、専用転送画面、ローカル映像、全画面バー、Control+Command+Fによる解除。

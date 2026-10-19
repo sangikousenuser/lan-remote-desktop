@@ -5,6 +5,7 @@
         self.dashboard.title=@"LAN Remote Desktop — 性能";self.dashboard.releasedWhenClosed=NO;
         self.dashboardText=label(@"接続または映像テストの開始後に数値を表示します。",13,NO);
         self.dashboardText.frame=NSMakeRect(20,20,640,370);self.dashboardText.font=[NSFont userFixedPitchFontOfSize:13];
+        self.dashboardText.textColor=NSColor.labelColor;
         [self.dashboard.contentView addSubview:self.dashboardText];[self.dashboard center];
     }
     [self updateMetrics];[self.dashboard makeKeyAndOrderFront:nil];
@@ -25,7 +26,7 @@
          "Mac CPU / RAM               %@ %% / %@ MiB\n"
          "Windows CPU / RAM           %@ %% / %@ MiB\n"
          "復帰 / 欠落 / 復号エラー    %@ / %@ / %@\n"
-         "GPU使用率                   —（利用可能な取得APIなし）\n\n"
+         "GPU使用率                   —（未取得）\n\n"
          "renderはCPU描画からcommand完了まで。画面の光学表示遅延ではありません。\n"
          "file送出は送信queueへ受理された本文、受信はhash検証済み本文です。",
         self.rttMilliseconds,number(remote[@"capture_ms"]),number(remote[@"encode_ms"]),number(local[@"decode_ms"]),number(local[@"render_ms"]),number(local[@"render_gpu_ms"]),

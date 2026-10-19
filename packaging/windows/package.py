@@ -9,6 +9,7 @@ import shutil
 import struct
 import subprocess
 import zipfile
+from verify_binary import verify
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -18,6 +19,7 @@ def main():
     parser.add_argument('--installer', action='store_true', help='also compile NSIS setup')
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
+    verify(binary)
     image = binary.read_bytes()
     if image[:2] != b'MZ' or len(image) < 64:
         parser.error('binary is not a Windows executable')
@@ -32,6 +34,7 @@ def main():
     helper = binary.with_name('lrd-update-helper.exe')
     if not helper.is_file():
         parser.error('build lrd-update-helper for the same Windows target first')
+    verify(helper)
     shutil.copy2(helper, folder / helper.name)
     versions = re.findall(r'^version = "([0-9A-Za-z.+-]+)"$', (ROOT / 'Cargo.toml').read_text(), re.M)
     if len(versions) != 1:
