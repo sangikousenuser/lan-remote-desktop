@@ -15,6 +15,7 @@ fn main() {
     println!("cargo:rerun-if-changed=native/file-drop.inc");
     println!("cargo:rerun-if-changed=native/clipboard-ui.inc");
     println!("cargo:rerun-if-changed=native/network-support.inc");
+    println!("cargo:rerun-if-changed=native/dashboard.inc");
     println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
     println!("cargo:rerun-if-env-changed=SDKROOT");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {

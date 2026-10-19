@@ -20,7 +20,7 @@ extern bool lrd_clipboard_send(uint8_t,const uint8_t *,size_t);
 extern bool lrd_control_json(const uint8_t *,size_t);
 extern void lrd_startup_ready(void);
 extern char *lrd_resource_statistics_json(void);
-extern void lrd_record_render_metrics(double,double,double,uint64_t,uint64_t,uint64_t,uint64_t,bool);
+extern void lrd_record_metrics_json(const uint8_t *,size_t);
 extern bool lrd_export_numeric_logs(const char *);
 
 
@@ -36,6 +36,10 @@ extern bool lrd_export_numeric_logs(const char *);
     atomic_uint_fast64_t generation;
     atomic_uint_fast64_t presentedGeneration;
     atomic_bool hardware;
+    atomic_uint_fast64_t decodeMicros;
+    atomic_uint_fast64_t renderMicros;
+    atomic_uint_fast64_t gpuMicros;
+    atomic_uint_fast64_t gpuFrames;
     NSData *networkSPS;
     NSData *networkPPS;
     CMVideoFormatDescriptionRef networkFormat;
@@ -74,6 +78,7 @@ static void decodedFrame(void *context, void *source, OSStatus status, VTDecodeI
         lock = [NSLock new];
         atomic_init(&decoded, 0); atomic_init(&failures, 0); atomic_init(&presented, 0);
         atomic_init(&generation, 0); atomic_init(&presentedGeneration, 0); atomic_init(&hardware, false);
+        atomic_init(&decodeMicros,0);atomic_init(&renderMicros,0);atomic_init(&gpuMicros,0);atomic_init(&gpuFrames,0);
     }
     return self;
 }
@@ -145,7 +150,11 @@ static void decodedFrame(void *context, void *source, OSStatus status, VTDecodeI
             CFRelease(sample); return NO;
         }
     }
+    // With both asynchronous/temporal flags clear, Apple's API completes the
+    // output callback before return. This measures decode, not queue submission.
+    double decodeAt=CACurrentMediaTime();
     OSStatus result = VTDecompressionSessionDecodeFrame(session, sample, 0, NULL, NULL);
+    atomic_fetch_add(&decodeMicros,(uint64_t)(MAX(0.,CACurrentMediaTime()-decodeAt)*1e6));
     CFRelease(sample);
     if (result != noErr) {
         self.error = [NSString stringWithFormat:@"H.264デコード失敗 (%d)。", (int)result];
@@ -213,6 +222,7 @@ static void decodedFrame(void *context, void *source, OSStatus status, VTDecodeI
 @end
 @implementation LRDSoftwareView
 - (void)drawRect:(NSRect)dirty {
+    double renderAt=CACurrentMediaTime();
     (void)dirty;
     [[NSColor blackColor] setFill]; NSRectFill(self.bounds);
     uint64_t gen = 0;
@@ -227,7 +237,10 @@ static void decodedFrame(void *context, void *source, OSStatus status, VTDecodeI
                                 image.extent.size.width * scale, image.extent.size.height * scale);
         CGContextDrawImage([[NSGraphicsContext currentContext] CGContext], rect, cg);
         CGImageRelease(cg);
-        if (atomic_exchange(&self.decoder->presentedGeneration, gen) != gen) atomic_fetch_add(&self.decoder->presented, 1);
+        if (atomic_exchange(&self.decoder->presentedGeneration, gen) != gen) {
+            atomic_fetch_add(&self.decoder->presented, 1);
+            atomic_fetch_add(&self.decoder->renderMicros,(uint64_t)(MAX(0.,CACurrentMediaTime()-renderAt)*1e6));
+        }
     }
     CVPixelBufferRelease(buffer);
 }
@@ -243,6 +256,16 @@ extern bool lrd_agent_configure(uint32_t index);
 @property double lastMetricsAt;
 @property uint64_t lastMetricsDecoded;
 @property uint64_t lastMetricsPresented;
+@property uint64_t lastDecodeMicros;
+@property uint64_t lastRenderMicros;
+@property uint64_t lastGpuMicros;
+@property uint64_t lastGpuFrames;
+@property uint64_t lastMetricsErrors;
+@property uint64_t lastMetricsDropped;
+@property uint64_t lastMetricsReceived;
+@property(strong) NSDictionary *remoteStatistics;
+@property(strong) NSPanel *dashboard;
+@property(strong) NSTextField *dashboardText;
 @property(strong) NSView *videoContainer;
 @property(strong) MTKView *metalView;
 @property(strong) LRDSoftwareView *softwareView;
@@ -323,6 +346,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
 #include "clipboard-ui.inc"
 #include "display-ui.inc"
 #include "agent-ui.inc"
+#include "dashboard.inc"
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     (void)notification;
     lrdApp = self; atomic_init(&queuedNetworkFrames,0);atomic_init(&queuedAudioEvents,0);self.audio=[LRDAudio new];self.audioEnabled=YES;self.clipboardEnabled=YES;
@@ -378,6 +402,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     [appMenu addItemWithTitle:@"LAN Remote Desktopを終了" action:@selector(terminate:) keyEquivalent:@"q"];
     NSMenuItem *openVideo=[appMenu addItemWithTitle:@"検証用の映像ファイルを開く…" action:@selector(choose:) keyEquivalent:@"o"]; openVideo.target=self;
     NSMenuItem *exportLogs=[appMenu addItemWithTitle:@"性能ログを書き出す…" action:@selector(exportLogs:) keyEquivalent:@""];exportLogs.target=self;
+    NSMenuItem *dashboard=[appMenu addItemWithTitle:@"性能ダッシュボード…" action:@selector(dashboard:) keyEquivalent:@""];dashboard.target=self;
     appMenuItem.submenu = appMenu; NSApp.mainMenu = menu;
     NSMenuItem *viewItem = [NSMenuItem new]; [menu addItem:viewItem];
     NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"表示"];
@@ -515,10 +540,24 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     NSNumber *cpu=self.resourceStatistics[@"cpu_percent"],*memory=self.resourceStatistics[@"resident_bytes"];
     if([cpu isKindOfClass:[NSNumber class]] && [memory isKindOfClass:[NSNumber class]])self.metrics.stringValue=[self.metrics.stringValue stringByAppendingFormat:@"  /  CPU %.1f%%  /  RAM %.1f MiB",cpu.doubleValue,memory.doubleValue/1048576.0];
     uint64_t presentedCount=atomic_load(&self.decoder->presented);double dt=MAX(0.001,now-self.lastMetricsAt);
-    if(self.remoteConnected && self.lastMetricsAt>0 && decodedCount>=self.lastMetricsDecoded && presentedCount>=self.lastMetricsPresented)
-        lrd_record_render_metrics((decodedCount-self.lastMetricsDecoded)/dt,(presentedCount-self.lastMetricsPresented)/dt,self.rttMilliseconds,
-            atomic_load(&self.decoder->failures),atomic_load(&droppedNetworkFrames),self.sentBytes,self.receivedBytes,atomic_load(&self.decoder->hardware));
+    uint64_t decodeUs=atomic_load(&self.decoder->decodeMicros),renderUs=atomic_load(&self.decoder->renderMicros),gpuUs=atomic_load(&self.decoder->gpuMicros),gpuFrames=atomic_load(&self.decoder->gpuFrames);
+    uint64_t errors=atomic_load(&self.decoder->failures),dropped=atomic_load(&droppedNetworkFrames);
+    if(self.remoteConnected && self.lastMetricsAt>0 && decodedCount>=self.lastMetricsDecoded && presentedCount>=self.lastMetricsPresented){
+        uint64_t decoded=decodedCount-self.lastMetricsDecoded,presented=presentedCount-self.lastMetricsPresented,gpu=gpuFrames-self.lastGpuFrames;
+        NSDictionary *window=@{@"interval_ms":@((uint32_t)MIN(10001,dt*1000)),@"decoded":@(decoded),@"presented":@(presented),
+            @"decode_ms":@(decoded?(decodeUs-self.lastDecodeMicros)/(1000.*decoded):0.),
+            @"render_ms":@(presented?(renderUs-self.lastRenderMicros)/(1000.*presented):0.),
+            @"render_gpu_ms":gpu?@((gpuUs-self.lastGpuMicros)/(1000.*gpu)):(id)NSNull.null,
+            @"errors":@(errors),@"dropped":@(dropped),@"errors_delta":@(errors-self.lastMetricsErrors),@"dropped_delta":@(dropped-self.lastMetricsDropped),
+            @"received_delta":@(self.receivedBytes>=self.lastMetricsReceived?self.receivedBytes-self.lastMetricsReceived:0),
+            @"sent":@(self.sentBytes),@"received":@(self.receivedBytes),@"hardware":@(atomic_load(&self.decoder->hardware)),
+            @"visible":@(self.window.isVisible && !self.window.isMiniaturized && (self.window.occlusionState&NSWindowOcclusionStateVisible)!=0),@"rtt_ms":@(self.rttMilliseconds)};
+        NSData *json=[NSJSONSerialization dataWithJSONObject:window options:0 error:NULL];if(json)lrd_record_metrics_json(json.bytes,json.length);
+    }
     self.lastMetricsAt=now;self.lastMetricsDecoded=decodedCount;self.lastMetricsPresented=presentedCount;
+    self.lastDecodeMicros=decodeUs;self.lastRenderMicros=renderUs;self.lastGpuMicros=gpuUs;self.lastGpuFrames=gpuFrames;
+    self.lastMetricsErrors=errors;self.lastMetricsDropped=dropped;self.lastMetricsReceived=self.receivedBytes;
+    [self updateDashboard];
 }
 - (void)exportLogs:(id)sender {
     (void)sender;NSSavePanel *panel=[NSSavePanel savePanel];panel.allowedFileTypes=@[@"json"];panel.nameFieldStringValue=@"LAN-Remote-Desktop-diagnostics.json";
@@ -527,6 +566,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
         dispatch_async(dispatch_get_main_queue(),^{self.status.stringValue=ok?@"性能の数値ログを書き出しました。画面・入力・クリップボード本文は含みません。":@"ログを書き出せませんでした。アプリの保存領域以外の保存先を選択してください。";});});
 }
 - (void)drawInMTKView:(MTKView *)view {
+    double renderAt=CACurrentMediaTime();
     LRDDecoder *decoder = self.decoder;
     uint64_t gen = 0;
     CVPixelBufferRef buffer = [decoder copyLatest:&gen];
@@ -547,7 +587,14 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     [command addCompletedHandler:^(id<MTLCommandBuffer> completed) {
         if (completed.status == MTLCommandBufferStatusCompleted) {
             uint64_t previous = atomic_load(&decoder->presentedGeneration);
-            if (gen > previous && atomic_compare_exchange_strong(&decoder->presentedGeneration, &previous, gen)) atomic_fetch_add(&decoder->presented, 1);
+            if (gen > previous && atomic_compare_exchange_strong(&decoder->presentedGeneration, &previous, gen)) {
+                atomic_fetch_add(&decoder->presented, 1);
+                atomic_fetch_add(&decoder->renderMicros,(uint64_t)(MAX(0.,CACurrentMediaTime()-renderAt)*1e6));
+                if(@available(macOS 10.15,*)) {
+                    double gpu=completed.GPUEndTime-completed.GPUStartTime;
+                    if(isfinite(gpu)&&gpu>=0&&completed.GPUStartTime>0){atomic_fetch_add(&decoder->gpuMicros,(uint64_t)(gpu*1e6));atomic_fetch_add(&decoder->gpuFrames,1);}
+                }
+            }
         } else atomic_fetch_add(&decoder->failures, 1);
     }];
     [command presentDrawable:drawable]; [command commit]; CVPixelBufferRelease(buffer);
@@ -558,7 +605,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     uint64_t count = self.decoder ? atomic_load(&self.decoder->decoded) : 0;
     uint64_t rendered = self.decoder ? atomic_load(&self.decoder->presented) : 0;
     return @{@"schema": @1, @"test": self.remoteConnected ? @"remote_h264_decode_render" : @"local_h264_decode_render", @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
-        @"architecture": @LRD_ARCH, @"renderer": self.renderer ?: @"none", @"local_statistics":self.resourceStatistics?:@{},
+        @"architecture": @LRD_ARCH, @"renderer": self.renderer ?: @"none", @"local_statistics":self.resourceStatistics?:@{},@"remote_statistics":self.remoteStatistics?:@{},
         @"hardware_decode": (self.decoder && atomic_load(&self.decoder->hardware) ? @YES : @NO),
         @"decoded_frames": @(count), @"rendered_frames": @(rendered), @"elapsed_seconds": @(seconds),
         @"decode_fps": @(count/seconds), @"render_fps": @(rendered/seconds),

@@ -103,6 +103,22 @@ fn application_roundtrip(mode: TransportMode) {
             .input_epoch,
         2
     );
+    host.send_bulk(
+        Packet::json(
+            wire::CONFIG,
+            &serde_json::json!({"performance":{
+                "unix_ms":1,"encode_ms":2.0
+            }}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        receive_kind(&client_rx, wire::CONFIG)
+            .parse::<serde_json::Value>()
+            .unwrap()["performance"]["encode_ms"],
+        2.0
+    );
     host.send_bulk(Packet {
         kind: wire::VIDEO,
         payload: frame.to_vec(),
@@ -126,4 +142,29 @@ fn quic_native_media_control_files_and_manual_close() {
 #[test]
 fn tcp_native_adapter_preserves_existing_wire() {
     application_roundtrip(TransportMode::Tcp);
+}
+#[test]
+fn dropping_the_native_consumer_stops_both_datagram_adapters_without_manual_close() {
+    for mode in [TransportMode::Hybrid, TransportMode::Quic] {
+        let ((host, host_rx), (client, client_rx), root) = pair(mode);
+        drop(client_rx);
+        host.send_bulk(Packet {
+            kind: wire::VIDEO,
+            payload: include_bytes!("../../../../assets/test-frame.h264").to_vec(),
+        })
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !client.terminated() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(client.terminated());
+        // A processing/consumer failure is a resumable outage. It must never
+        // manufacture the user's explicit CLOSE intent.
+        while let Ok(packet) = host_rx.recv_timeout(Duration::from_millis(300)) {
+            assert_ne!(packet.kind, wire::CLOSE);
+        }
+        host.abort();
+        client.abort();
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

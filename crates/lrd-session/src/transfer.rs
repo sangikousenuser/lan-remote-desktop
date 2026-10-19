@@ -747,14 +747,17 @@ impl Service {
                             {
                                 return fail("session ended");
                             }
+                            let payload = source.chunk(file, chunk)?;
+                            let count = payload.len();
                             send.send_bulk(packet(
                                 &Operation::Chunk {
                                     id: id.clone(),
                                     file,
                                     chunk,
                                 },
-                                &source.chunk(file, chunk)?,
+                                &payload,
                             )?)?;
+                            crate::diagnostics::traffic::sent(count);
                         }
                         send.send_bulk(packet(&Operation::Finish { id: id.clone() }, &[])?)?;
                         Ok(())
@@ -773,6 +776,7 @@ impl Service {
                     .get_mut(&id)
                     .ok_or("unknown receiving transfer")?;
                 receiver.receive(file, chunk, bytes)?;
+                crate::diagnostics::traffic::received(bytes.len());
                 Ok(format!(
                     "受信中 — 残り {} チャンク",
                     receiver.missing().len()

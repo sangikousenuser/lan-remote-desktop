@@ -27,6 +27,24 @@ struct Active {
 static ACTIVE: OnceLock<Mutex<Option<Active>>> = OnceLock::new();
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 static TRANSPORT: AtomicU8 = AtomicU8::new(0);
+static RECONNECTS: AtomicU64 = AtomicU64::new(0);
+pub fn reconnects() -> u64 {
+    RECONNECTS.load(Ordering::Relaxed)
+}
+pub fn feedback(mut sample: lrd_session::quality::Feedback) {
+    if let Ok(slot) = active().lock() {
+        if let Some(active) = slot.as_ref() {
+            sample.epoch = active.epoch;
+            if sample.valid() {
+                if let Ok(packet) =
+                    Packet::json(wire::CONFIG, &serde_json::json!({"feedback":sample}))
+                {
+                    let _ = active.sender.send(packet);
+                }
+            }
+        }
+    }
+}
 #[no_mangle]
 pub extern "C" fn lrd_set_transport(mode: u8) {
     if mode <= 2 {
@@ -91,6 +109,7 @@ pub unsafe extern "C" fn lrd_connect(index: u32, address: *const c_char) {
         _ => wire::TransportMode::Tcp,
     };
     let generation = GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
+    RECONNECTS.store(0, Ordering::Relaxed);
     if let Ok(mut old) = active().lock() {
         if let Some(session) = old.take() {
             session.sender.close();
@@ -263,6 +282,7 @@ fn connection(
     }
     let config: VideoConfig = config.parse()?;
     config.validate()?;
+    let was_resume = resume.is_some();
     *resume = Some(Resume {
         pin: peer.clone(),
         token: config.resume_token.clone(),
@@ -279,6 +299,9 @@ fn connection(
         config.input_epoch,
     )?;
     *established = true;
+    if was_resume {
+        RECONNECTS.fetch_add(1, Ordering::Relaxed);
+    }
     let files = lrd_session::file_worker::start(peer.clone(), sender.clone(), move |message| {
         event(generation, 5, message.as_bytes())
     })?;
@@ -329,6 +352,14 @@ fn connection(
         }
         match packet.kind {
             wire::CONFIG => {
+                let value: serde_json::Value = packet.parse()?;
+                if let Some(value) = value.get("performance") {
+                    let sample: lrd_session::diagnostics::Sample =
+                        serde_json::from_value(value.clone())?;
+                    sample.validate()?;
+                    event(generation, 10, &serde_json::to_vec(&sample)?);
+                    continue;
+                }
                 let new: VideoConfig = packet.parse()?;
                 new.validate()?;
                 if new.session_id != config.session_id || new.resume_token != config.resume_token {

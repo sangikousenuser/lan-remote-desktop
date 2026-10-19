@@ -187,6 +187,7 @@ fn list_monitors(factory: &IDXGIFactory1) -> Result<()> {
 }
 
 struct Capture {
+    processing_ms: std::cell::Cell<f64>,
     context: ID3D11DeviceContext,
     duplication: IDXGIOutputDuplication,
     staging: ID3D11Texture2D,
@@ -267,6 +268,7 @@ impl Capture {
             let mut staging = None;
             device.CreateTexture2D(&staging_desc, None, Some(&mut staging))?;
             Ok(Self {
+                processing_ms: std::cell::Cell::new(0.),
                 context,
                 duplication,
                 staging: staging.ok_or_else(|| windows::core::Error::from(E_FAIL))?,
@@ -288,6 +290,7 @@ impl Capture {
                 result => result?,
             }
             let _frame = Acquired(&self.duplication);
+            let processing_at = std::time::Instant::now();
             let texture: ID3D11Texture2D = resource
                 .ok_or_else(|| windows::core::Error::from(E_FAIL))?
                 .cast()?;
@@ -311,6 +314,8 @@ impl Capture {
                     row,
                 );
             }
+            self.processing_ms
+                .set(processing_at.elapsed().as_secs_f64() * 1000.);
             Ok(Some(pixels))
         }
     }

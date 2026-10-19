@@ -144,7 +144,7 @@ pub fn start(
     std::thread::spawn(move || {
         let transport = Arc::new(transport);
         let _ = runtime.block_on(run(transport.clone(), driver, client, epoch));
-        transport.close();
+        transport.abort();
         drop(transport);
         runtime.shutdown_timeout(Duration::from_secs(2));
     });
@@ -297,8 +297,9 @@ async fn run(
                             }
                         } else {
                             if !client && packet.kind == wire::CONFIG {
-                                let config: VideoConfig = packet.parse()?;
-                                config.validate()?; epoch = config.input_epoch;
+                                if let Ok(config) = packet.parse::<VideoConfig>() {
+                                    config.validate()?; epoch = config.input_epoch;
+                                }
                             }
                             let count = packet.payload.len() + 6;
                             tokio::time::timeout(Duration::from_secs(5), transport.send_reliable(packet)).await??;
@@ -337,9 +338,11 @@ async fn run(
                         }
                     } else {
                         if client && packet.kind == wire::CONFIG {
-                            let config: VideoConfig = packet.parse()?; config.validate()?;
-                            epoch = config.input_epoch; video = assembly(epoch, Kind::Video);
-                            audio = assembly(epoch, Kind::Audio); last_video = None; keyframe = true;
+                            if let Ok(config) = packet.parse::<VideoConfig>() {
+                                config.validate()?;
+                                epoch = config.input_epoch; video = assembly(epoch, Kind::Video);
+                                audio = assembly(epoch, Kind::Audio); last_video = None; keyframe = true;
+                            }
                         }
                         pending.push_back(packet);
                     }
@@ -363,7 +366,11 @@ async fn run(
                             last_video = Some(sequence);
                         }
                         let packet = Packet {kind:if kind==Kind::Video {wire::VIDEO} else {wire::AUDIO},payload};
-                        if driver.deliver(packet).is_err() { driver.dropped(); if kind==Kind::Video {keyframe=true;} }
+                        match driver.deliver(packet) {
+                            Ok(()) => (),
+                            Err(mpsc::TrySendError::Full(_)) => { driver.dropped(); if kind==Kind::Video {keyframe=true;} }
+                            Err(mpsc::TrySendError::Disconnected(_)) => return Ok(()),
+                        }
                     }
                 }
             }

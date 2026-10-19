@@ -180,6 +180,9 @@ impl Hybrid {
     pub fn close(&self) {
         self.sender.close();
     }
+    pub fn abort(&self) {
+        self.sender.abort();
+    }
     pub(crate) async fn finish(&self) -> Result<()> {
         self.sender.close();
         tokio::time::timeout(Duration::from_secs(5), async {

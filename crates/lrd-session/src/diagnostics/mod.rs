@@ -1,6 +1,7 @@
 //! Typed numeric local logs. No field accepts text, paths, peer identifiers,
 //! keyboard data, clipboard contents, frame pixels or file contents.
 pub mod resources;
+pub mod traffic;
 use crate::{fail, identity, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -21,6 +22,10 @@ pub struct Sample {
     pub unix_ms: u64,
     pub rtt_ms: Option<f64>,
     pub encode_ms: Option<f64>,
+    pub capture_ms: Option<f64>,
+    pub decode_ms: Option<f64>,
+    pub render_ms: Option<f64>,
+    pub render_gpu_ms: Option<f64>,
     pub capture_fps: Option<f64>,
     pub decode_fps: Option<f64>,
     pub render_fps: Option<f64>,
@@ -34,15 +39,21 @@ pub struct Sample {
     pub dropped_frames: Option<u64>,
     pub queue_stalls: Option<u64>,
     pub reconnects: Option<u64>,
+    pub file_send_bytes_per_second: Option<u64>,
+    pub file_receive_bytes_per_second: Option<u64>,
     pub cpu_percent: Option<f64>,
     pub resident_bytes: Option<u64>,
     pub peak_resident_bytes: Option<u64>,
 }
 impl Sample {
-    fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         for value in [
             self.rtt_ms,
             self.encode_ms,
+            self.capture_ms,
+            self.decode_ms,
+            self.render_ms,
+            self.render_gpu_ms,
             self.capture_fps,
             self.decode_fps,
             self.render_fps,

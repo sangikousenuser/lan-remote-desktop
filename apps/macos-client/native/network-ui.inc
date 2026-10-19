@@ -152,6 +152,7 @@
         if ([alert runModal]==NSAlertFirstButtonReturn) self.address.stringValue=list.selectedItem.representedObject;
         self.status.stringValue=@"接続先を選びました。「接続」で認証と承認を開始します。";return;
     }
+    if(kind==10){id value=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];if([value isKindOfClass:[NSDictionary class]])self.remoteStatistics=value;return;}
     if (kind==2) {
         NSDictionary *config=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
         BOOL firstConnection=!self.remoteConnected;

@@ -31,6 +31,7 @@ use windows::{
 struct Controller {
     release: std::sync::mpsc::Sender<()>,
     display: Option<super::display::Lease>,
+    reconnects: u64,
 }
 impl Controller {
     fn acquire() -> Option<Self> {
@@ -58,6 +59,7 @@ impl Controller {
         ready_rx.recv().ok().filter(|ok| *ok).map(|_| Self {
             release: release_tx,
             display: None,
+            reconnects: 0,
         })
     }
 }
@@ -521,8 +523,13 @@ fn serve(
         peer.clone(),
         config.input_epoch,
     )?;
-    lease.check_deadline()?;
+    lease.check_deadline().inspect_err(|_| sender.abort())?;
     lease.live = true;
+    if resumed {
+        if let Some(control) = lease.control.as_mut() {
+            control.reconnects = control.reconnects.saturating_add(1);
+        }
+    }
     lease.token = config.resume_token.clone();
     if let Ok(mut slot) = session().lock() {
         *slot = Some((sender.clone(), manual.clone()));
@@ -587,6 +594,12 @@ fn serve(
     let rect = capture.rect;
     let input_state = Arc::new(std::sync::Mutex::new((config.input_epoch, rect)));
     let input_state_worker = input_state.clone();
+    let feedback = Arc::new(std::sync::Mutex::new(
+        None::<(Instant, lrd_session::quality::Feedback)>,
+    ));
+    let feedback_worker = feedback.clone();
+    let input_events = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let input_events_worker = input_events.clone();
     let (display_tx, display_rx) = std::sync::mpsc::sync_channel(2);
     cleanup.worker = Some(std::thread::spawn(move || {
         let mut injector = Injector::new(rect);
@@ -614,6 +627,19 @@ fn serve(
             }
             if packet.kind == wire::CONFIG {
                 if let Ok(value) = packet.parse::<serde_json::Value>() {
+                    if let Some(value) = value.get("feedback") {
+                        if let Ok(sample) =
+                            serde_json::from_value::<lrd_session::quality::Feedback>(value.clone())
+                        {
+                            if sample.valid()
+                                && input_state_worker.lock().is_ok_and(|s| s.0 == sample.epoch)
+                            {
+                                if let Ok(mut latest) = feedback_worker.lock() {
+                                    *latest = Some((Instant::now(), sample));
+                                }
+                            }
+                        }
+                    }
                     if let Some(display) = value.get("display") {
                         if let Ok(request) =
                             serde_json::from_value::<DisplayRequest>(display.clone())
@@ -661,6 +687,9 @@ fn serve(
                     }
                     last = p.sequence;
                     last_input = Instant::now();
+                    if !matches!(p.input, wire::Input::KeepAlive | wire::Input::Release) {
+                        input_events_worker.fetch_add(1, Ordering::Relaxed);
+                    }
                     injector.apply(p.input)
                 })();
                 if result.is_err() {
@@ -680,6 +709,10 @@ fn serve(
     let mut previous_stalls = 0;
     encoder.set_bitrate(quality.target().bitrate);
     let mut cached_frame = None;
+    let mut change_fraction = 0.;
+    let mut capture_average = 0.;
+    let mut file_meter = lrd_session::diagnostics::traffic::Meter::default();
+    let mut resource_meter = lrd_session::diagnostics::resources::Meter::default();
     let mut captured_since_metrics = 0u64;
     let mut metrics_previous_sent = 0u64;
     let mut last_video = Instant::now() - Duration::from_secs(2);
@@ -687,9 +720,31 @@ fn serve(
         let start = Instant::now();
         if quality_at.elapsed() > Duration::from_secs(2) {
             let stats = sender.statistics();
-            lrd_session::diagnostics::record(lrd_session::diagnostics::Sample {
+            let elapsed = quality_at.elapsed().as_secs_f64();
+            let remote = feedback
+                .lock()
+                .ok()
+                .and_then(|s| *s)
+                .filter(|(at, sample)| {
+                    at.elapsed() < Duration::from_secs(3) && sample.epoch == config.input_epoch
+                })
+                .map(|(_, s)| s);
+            let (file_send, file_receive) = file_meter.sample();
+            let resources = resource_meter.sample();
+            let sample = lrd_session::diagnostics::Sample {
                 rtt_ms: (stats.rtt_ms > 0.).then_some(stats.rtt_ms),
                 encode_ms: (encode_average > 0.).then_some(encode_average),
+                capture_ms: (capture_average > 0.).then_some(capture_average),
+                decode_ms: remote.map(|s| s.decode_ms),
+                render_ms: remote.map(|s| s.render_ms),
+                decode_fps: remote.map(|s| s.decoded as f64 * 1000. / s.interval_ms as f64),
+                render_fps: remote.map(|s| s.presented as f64 * 1000. / s.interval_ms as f64),
+                file_send_bytes_per_second: Some(file_send),
+                file_receive_bytes_per_second: Some(file_receive),
+                reconnects: lease.control.as_ref().map(|c| c.reconnects),
+                cpu_percent: resources.cpu_percent,
+                resident_bytes: resources.resident_bytes,
+                peak_resident_bytes: resources.peak_resident_bytes,
                 capture_fps: Some(
                     captured_since_metrics as f64 / quality_at.elapsed().as_secs_f64(),
                 ),
@@ -703,13 +758,23 @@ fn serve(
                 received_bytes: Some(stats.received_bytes),
                 queue_stalls: Some(stats.queue_full),
                 ..Default::default()
-            });
+            };
+            if remote.is_some() {
+                let _ = sender.send(Packet::json(
+                    wire::CONFIG,
+                    &serde_json::json!({"performance":sample}),
+                )?);
+            }
+            lrd_session::diagnostics::record(sample);
             captured_since_metrics = 0;
             metrics_previous_sent = stats.sent_bytes;
-            if let Some(target) = quality.observe(
+            if let Some(target) = quality.observe_pipeline(
                 encode_average,
                 stats.rtt_ms,
                 stats.queue_full.saturating_sub(previous_stalls),
+                remote,
+                change_fraction,
+                input_events.swap(0, Ordering::Relaxed) as f64 / elapsed,
             ) {
                 encoder.set_bitrate(target.bitrate);
                 eprintln!(
@@ -718,6 +783,7 @@ fn serve(
                 );
             }
             previous_stalls = stats.queue_full;
+            change_fraction *= 0.5;
             quality_at = Instant::now();
         }
         if let Ok(request) = display_rx.try_recv() {
@@ -746,6 +812,13 @@ fn serve(
                 }
                 capture = Capture::new(&factory, a, m)?;
                 encoder = StreamEncoder::new(capture.width, capture.height, fps)?;
+                quality = lrd_session::quality::Controller::new(
+                    fps,
+                    capture.width as u64 * capture.height as u64,
+                );
+                encoder.set_bitrate(quality.target().bitrate);
+                change_fraction = 0.;
+                capture_average = 0.;
                 cached_frame = None;
                 config.width = capture.width;
                 config.height = capture.height;
@@ -760,6 +833,11 @@ fn serve(
         let changed = match capture.frame() {
             Ok(Some(frame)) => {
                 captured_since_metrics += 1;
+                capture_average = capture_average * 0.9 + capture.processing_ms.get() * 0.1;
+                let changed = cached_frame.as_ref().map_or(1., |old: &Vec<u8>| {
+                    lrd_session::quality::changed_fraction(old, &frame)
+                });
+                change_fraction = change_fraction * 0.8 + changed * 0.2;
                 cached_frame = Some(frame);
                 true
             }

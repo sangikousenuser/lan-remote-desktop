@@ -1,6 +1,8 @@
 #[cfg(target_os = "macos")]
 mod agent;
 #[cfg(target_os = "macos")]
+mod metrics;
+#[cfg(target_os = "macos")]
 mod network;
 
 #[cfg(target_os = "macos")]
@@ -53,32 +55,8 @@ pub extern "C" fn lrd_resource_statistics_json() -> *mut std::ffi::c_char {
         .map(|mut m| m.sample())
         .unwrap_or_default();
     let value = serde_json::json!({"cpu_percent":resource.cpu_percent,"resident_bytes":resource.resident_bytes,
-        "peak_resident_bytes":resource.peak_resident_bytes,"log_dropped_samples":lrd_session::diagnostics::dropped_samples()});
+        "peak_resident_bytes":resource.peak_resident_bytes,"log_dropped_samples":lrd_session::diagnostics::dropped_samples(),"metrics":lrd_session::diagnostics::latest(),"reconnects":network::reconnects()});
     std::ffi::CString::new(value.to_string()).map_or(std::ptr::null_mut(), |s| s.into_raw())
-}
-#[cfg(target_os = "macos")]
-#[no_mangle]
-pub extern "C" fn lrd_record_render_metrics(
-    decode_fps: f64,
-    render_fps: f64,
-    rtt_ms: f64,
-    errors: u64,
-    dropped: u64,
-    sent: u64,
-    received: u64,
-    hardware: bool,
-) {
-    lrd_session::diagnostics::record(lrd_session::diagnostics::Sample {
-        decode_fps: Some(decode_fps),
-        render_fps: Some(render_fps),
-        rtt_ms: (rtt_ms > 0.).then_some(rtt_ms),
-        decode_errors: Some(errors),
-        dropped_frames: Some(dropped),
-        sent_bytes: Some(sent),
-        received_bytes: Some(received),
-        decoder_hardware: Some(hardware),
-        ..Default::default()
-    });
 }
 #[cfg(target_os = "macos")]
 #[no_mangle]

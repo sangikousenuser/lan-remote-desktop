@@ -13,6 +13,12 @@ pub enum Channel {
     Quic(Box<quic::Quic>),
 }
 impl Channel {
+    pub fn abort(&self) {
+        match self {
+            Self::Hybrid(t) => t.abort(),
+            Self::Quic(t) => t.close(),
+        }
+    }
     pub async fn finish(&self) -> Result<()> {
         match self {
             Self::Hybrid(t) => t.finish().await,
