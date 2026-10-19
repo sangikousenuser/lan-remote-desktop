@@ -44,7 +44,7 @@ def main():
         (folder / name).write_text(source.read_text(encoding='utf-8-sig'), encoding='utf-8-sig')
     shutil.copy2(ROOT / 'docs/manual-testing.md', folder / 'manual-testing.md')
     (folder / 'README.txt').write_text(
-        'LAN Remote Desktop 0.9.0-alpha.1 — Windows 11 x64 Host\n\n'
+        f'LAN Remote Desktop {version} — Windows 11 x64 Host\n\n'
         'Start-Host.ps1 をPowerShellから実行し、物理Ethernet番号を選びます。\n'
         'Macで「探索」→「接続」。初回は両端のコード一致を確認して許可してください。\n'
         '通知領域アイコンを右クリックすると送信・受信フォルダー・切断・終了が使えます。\n'

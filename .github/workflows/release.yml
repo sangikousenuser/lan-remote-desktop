@@ -1,18 +1,78 @@
-name: Protected Stable Release (disabled until signing is implemented)
+name: Protected Stable Release
 on:
-  push:
-    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful Release Candidate Build run ID for this exact Stable tag
+        required: true
+        type: string
+      evidence:
+        description: Acceptance JSON matching the candidate inventory hash (see docs/releasing.md)
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
+
+concurrency:
+  group: stable-publication
+  cancel-in-progress: false
 
 jobs:
-  protected-release:
+  acceptance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify first-party candidate provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" > candidate-run.json
+          python3 packaging/release/pipeline.py candidate-run --root candidate-run.json
+          gh run download "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-prepared --dir prepared
+      - name: Require implementation and hardware acceptance for these exact bytes
+        env:
+          LRD_RELEASE_EVIDENCE: ${{ inputs.evidence }}
+        run: python3 packaging/release/pipeline.py check --root prepared
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: accepted-candidate
+          path: prepared/
+          if-no-files-found: error
+
+  sign-and-publish:
+    needs: acceptance
     runs-on: ubuntu-24.04
     environment: release
+    permissions:
+      contents: write
+      actions: read
     steps:
-      - name: Safe fail-closed release gate
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: accepted-candidate
+          path: prepared
+      - name: Recheck accepted bytes after environment approval
+        env:
+          LRD_RELEASE_EVIDENCE: ${{ inputs.evidence }}
+        run: python3 packaging/release/pipeline.py check --root prepared
+      - name: Sign with the protected independent key and verify every package
+        env:
+          LRD_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.LRD_SIGNING_KEY_PKCS8_BASE64 }}
+        run: python3 packaging/release/pipeline.py sign --root prepared --output signed
+      - name: Upload draft, compare server digests, then publish Stable
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo 'BLOCKED: Alpha sessions and installer exist. Signed update apply/rollback, transport comparison, fixed-IP helper and hardware validation remain incomplete.'
-          echo 'Implement signed package publication, reviewed artifact provenance and rollback tests before enabling this workflow.'
-          exit 1
+          VERSION=$(python3 -c 'import json; print(json.load(open("prepared/inventory.json"))["version"])')
+          python3 packaging/release/pipeline.py publish --root signed --version "$VERSION" --signer prepared/tools/signer

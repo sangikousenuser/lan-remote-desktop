@@ -23,7 +23,7 @@
 | 転送 | 専用UI、双方向ファイル/フォルダー、階層/複数選択、進捗/取消、SHA-256、1MiB chunk、永続manifestと再開、capability受信、非上書き完成配置 | 実LANの両方向1GiB超、遅いディスク、アプリ再起動の受入試験。不要な部分データの整理UI |
 | Drag & Drop | Finder→Mac転送/映像画面、Explorer→Windows専用画面から固定受信先へ転送 | 任意Explorer/Finder位置への直接リモートOLE/File Promise連携 |
 | 常駐/配布 | Windows tray/専用転送画面、同一NICで待受再構築、NSIS Per-user/Per-machine、任意のログイン時起動、Mac LaunchAgent登録/解除、.app/ZIP | 両Windowsモードのインストール/アンインストール実機、High Sierra LaunchAgent |
-| 更新 | HTTPS取得、埋込みEd25519署名、Stable/CPU/OS/protocol/hash/パス検査、private staging、次回起動helper、backup/journal、起動応答/生存監視、失敗復元、失敗版blocklist | 管理者所有の配置への権限分離・署名公開workflow・実際の2版アプリでの更新試験。Stableはまだ未公開 |
+| 更新 | HTTPS取得、埋込みEd25519署名、Stable/CPU/OS/protocol/hash/パス検査、private staging、次回起動helper、backup/journal、起動応答/生存監視、失敗復元、失敗版blocklist、候補bytes/実機申告照合→Environment承認→署名/検証→draft hash照合/公開workflow | 管理者所有の配置への権限分離・実際の2版アプリでの更新試験。Stableは未公開、公開ゲートfalse |
 | Q50 | QUIC DATAGRAM/TLS+AEAD UDPの両候補、相互認証/両端承認、本体の映像/音声/入力/転送/再開へ接続、通信方式メニュー、暗号/replay/世代検査、共通比較CLI | 実Ethernet性能/損失/長時間と最終方式選定。live既定はTLS/TCP |
 | 固定IP | OSのDHCP/Link-Localを利用。Firewall限定設定スクリプトを同梱 | 狭い管理者helper、snapshot/rollback、衝突検出、両端ローカルウィザード |
 | CI/正式公開 | Public repo、3OS fmt/clippy/tests/buildとWindows NSIS/Intel .app生成成功、alpha取得可能、正式公開を拒否するゲート | 追加変更のActions検証、実機ゲート、署名公開workflowの完成 |

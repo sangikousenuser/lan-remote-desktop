@@ -46,7 +46,13 @@ fn bounded(path: &Path, maximum: u64) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-fn sign(key_path: &Path, recipe_path: &Path, source: &Path, output: &Path) -> Result<()> {
+fn sign(
+    key_path: &Path,
+    recipe_path: &Path,
+    source: &Path,
+    output: &Path,
+    public_path: &Path,
+) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -56,6 +62,10 @@ fn sign(key_path: &Path, recipe_path: &Path, source: &Path, output: &Path) -> Re
     }
     let key = Ed25519KeyPair::from_pkcs8(&bounded(key_path, 16384)?)
         .map_err(|_| std::io::Error::other("invalid signing key"))?;
+    let expected = bounded(public_path, 128)?;
+    if std::str::from_utf8(&expected)?.trim() != identity::hex(key.public_key().as_ref()) {
+        return fail("signing key does not match the reviewed public trust anchor");
+    }
     let recipe: Recipe = serde_json::from_slice(&bounded(recipe_path, 128 * 1024)?)?;
     if !matches!(
         recipe.target.as_str(),
@@ -142,6 +152,35 @@ fn sign(key_path: &Path, recipe_path: &Path, source: &Path, output: &Path) -> Re
     );
     Ok(())
 }
+fn verify(envelope_path: &Path, package_path: &Path, public_path: &Path) -> Result<()> {
+    let key = bounded(public_path, 128)?;
+    let text = std::str::from_utf8(&key)?.trim();
+    if text.len() != 64 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return fail("invalid public trust anchor");
+    }
+    let public: [u8; 32] = (0..32)
+        .map(|i| u8::from_str_radix(&text[i * 2..i * 2 + 2], 16))
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .try_into()
+        .map_err(|_| "invalid key size")?;
+    let bytes = bounded(envelope_path, 1024 * 1024)?;
+    let envelope: Envelope = serde_json::from_slice(&bytes)?;
+    let manifest: Manifest = serde_json::from_str(&envelope.manifest)?;
+    let policy = Policy {
+        installed: "0.0.0",
+        highest_staged: None,
+        target: &manifest.target,
+        os: &manifest.minimum_os,
+        public_key: &public,
+    };
+    VerifiedManifest::verify(&bytes, &policy)?
+        .verify_package(bounded(package_path, MAX_PACKAGE as u64)?)?;
+    println!(
+        "Verified {} {} (signature and package members)",
+        manifest.version, manifest.target
+    );
+    Ok(())
+}
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -157,8 +196,9 @@ fn run() -> Result<()> {
             println!("Created private signing key and public trust anchor; existing keys are never overwritten.");
             Ok(())
         }
-        Some("sign") if args.len()==5 => sign(Path::new(&args[1]),Path::new(&args[2]),Path::new(&args[3]),Path::new(&args[4])),
-        _ => fail("usage: lrd-release-tool keygen PRIVATE_PK8 PUBLIC_HEX | sign PRIVATE_PK8 RECIPE_JSON SOURCE_ROOT OUTPUT_DIRECTORY"),
+        Some("sign") if args.len()==6 => sign(Path::new(&args[1]),Path::new(&args[2]),Path::new(&args[3]),Path::new(&args[4]),Path::new(&args[5])),
+        Some("verify") if args.len()==4 => verify(Path::new(&args[1]),Path::new(&args[2]),Path::new(&args[3])),
+        _ => fail("usage: lrd-release-tool keygen PRIVATE_PK8 PUBLIC_HEX | sign PRIVATE_PK8 RECIPE_JSON SOURCE_ROOT OUTPUT_DIRECTORY EXPECTED_PUBLIC_HEX | verify MANIFEST PACKAGE EXPECTED_PUBLIC_HEX"),
     }
 }
 fn main() {

@@ -3,12 +3,13 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -47,6 +48,16 @@ jobs:
           if-no-files-found: error
       - name: Packaging gate tests
         run: python3 -m unittest discover -s packaging/macos -p 'test_*.py'
+      - name: Release pipeline gate tests
+        run: python3 -m unittest discover -s packaging/release -p 'test_*.py'
+      - name: Build isolated offline release signer
+        if: runner.os == 'Linux'
+        run: cargo build --locked -p lrd-session --example lrd-release-tool
+      - name: Offline signing lifecycle tests
+        if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s packaging/release -p 'test_*.py'
+        env:
+          LRD_RELEASE_TOOL: target/debug/examples/lrd-release-tool
       - name: Compile release applications
         run: cargo build --locked --workspace --release
       - name: Initialize Windows process and enumerate Ethernet

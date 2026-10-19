@@ -153,8 +153,17 @@ impl Store {
                 std::fs::remove_file(path)?;
                 continue;
             }
-            total = total.saturating_add(metadata.len());
-            files.push((at, path, metadata.len(), current));
+            // NTFS directory enumeration can report the old length while our
+            // append handle stays open. Count our completed writes immediately.
+            let size = self
+                .current
+                .as_ref()
+                .filter(|(p, _, _)| p == &path)
+                .map_or(metadata.len(), |(_, _, written)| {
+                    metadata.len().max(*written)
+                });
+            total = total.saturating_add(size);
+            files.push((at, path, size, current));
         }
         files.sort_by_key(|f| f.0);
         for (_, path, size, current) in files {

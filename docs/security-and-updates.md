@@ -39,7 +39,7 @@ Per-machine Installは実行ファイルをPC全体で共有するだけであ�
 - `vX.Y.Z`タグ作成 → CI build → SHA256保存 → High Sierra実機手動チェック → `release` GitHub Environmentでreviewer承認 → Release署名・公開。
 - Environment Secretの署名秘密鍵は`release` Jobだけへ提供。`contents: write`は公開Jobだけ。Github Actionsの署名/公開JobはPRの非信頼コードを直接実行しない。
 - **承認だけでビルド・更新コードの信頼性は保証されない**：変更したワークフローと署名対象artifactの供給元コミットを確認し、release tagを保護、ジョブ権限を最小化する。
-- この雛形の`release.yml`は署名コマンドの未実装時に**意図的に失敗**する。秘密鍵を実装してから公開を有効にする。
+- `release.yml`は[候補のbytes・実装完了・実機受入の照合](releasing.md)後だけEnvironment承認と署名・draft検査・公開へ進む。現在は実装完了ゲートfalse、署名secret未登録であり正式公開を行わない。
 - 秘密鍵ローテーションは署名鍵変更を旧鍵による移行承認と新鍵事前同梱で実施。漏えい時に自動更新へ依存しない緊急手動更新手段を用意。
 
 ## ログと性能ダッシュボード
