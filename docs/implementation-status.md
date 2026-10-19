@@ -32,7 +32,7 @@
 
 開発端末: Mac17,9 / Apple M5 Pro、macOS 27.0.1。Rust 1.99.0。Windows x64はMinGW cross build、Intel Mac版はcross build + Rosettaです。
 
-- Rust: common 9件、protocol 14件、session 47件、transport 10件、Mac 5件、合計85件の通常テスト。これにPythonのMacパッケージ検査3件・Windows PE検査4件・公開パイプライン5件を実行。
+- Rust: common 9件、protocol 14件、session 49件、transport 10件、Mac 5件、Macでは合計87件の通常テスト。これにPythonのMacパッケージ検査3件・Windows PE検査4件・公開パイプライン5件を実行。
 - セッション試験: 相互TLS・確認コード一致、片側拒否時の両方の登録禁止、別証明書pin拒否、双方向の256KiB×8パケットを8KiB socket bufferで同時送受信、期限/世代/サイズ/パス/署名異常。
 - 別途、ignored指定の1GiB超テストを実行済み。1GiB+123bytesを512チャンクで中断し、Receiverを作り直して残りを受信、全体SHA-256一致。182.47秒。この結果は転送エンジンのローカル試験であり実LAN試験ではありません。
 - Macの実アプリ: Ethernet不在の案内、専用転送画面、ローカル映像、全画面バー、Control+Command+Fによる解除。
@@ -65,3 +65,5 @@ High Sierraでの互換性は最低OSのロードコマンド検査やRosettaで
 前回Host/既知の鍵の優先表示追加後は通常83件。保存は認証・承認・接続成功後だけ。探索の申告は信頼せず、証明書検証と毎回のMac承認を維持する。常駐監視からも候補選択を表示し、複数Hostを勝手に接続先へ確定しない。
 
 初回自動解像度選択を追加後は85件成功。入力取得の根拠を「復号済み」から「描画完了」へ修正した。hardware decoder非対応はsoftwareへ復帰し、Metalの初期化/command失敗時も入力を解放してCPU描画へ切り替える。softwareで目標GPU性能を達成したとは扱わない。
+
+Mac更新の署名回帰を修正。journalを.app外へ置き、署名検証済みの完全なbundleをatomic exchangeで交換・復元する。署名済みfixtureの2試験で中断復元と再適用、独立変更の拒否を確認。Windows配布はCRTをstatic linkし、通常/delay importのDLLを梱包時に検査する。`5da6ca0` の3OS CIとcross-OS codecはrun 39190951552で成功。

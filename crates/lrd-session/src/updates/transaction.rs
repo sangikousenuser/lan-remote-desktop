@@ -12,6 +12,8 @@ use std::{
 };
 
 const WORK: &str = "transaction";
+#[cfg(target_os = "macos")]
+mod bundle;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum Phase {
     Prepared,
@@ -35,6 +37,11 @@ struct State {
     version: String,
     phase: Phase,
     previous: Vec<Option<Previous>>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    bundle: bool,
+}
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -49,8 +56,30 @@ pub struct Transaction {
     control: Dir,
     // OS lock is released even on crash; no stale PID/lock-file deletion race.
     _lock: File,
+    #[cfg(target_os = "macos")]
+    bundle: Option<bundle::Bundle>,
 }
 impl Transaction {
+    pub fn open_application(installation: &Path) -> Result<Self> {
+        #[cfg(target_os = "macos")]
+        {
+            bundle::open(installation)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Self::open(installation)
+        }
+    }
+    pub fn application_state_path(installation: &Path) -> Result<std::path::PathBuf> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(bundle::control_path(installation)?.join("transaction/state.json"))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Ok(installation.join(".lrd-update/transaction/state.json"))
+        }
+    }
     pub fn open(installation: &Path) -> Result<Self> {
         if std::fs::symlink_metadata(installation)?
             .file_type()
@@ -66,6 +95,9 @@ impl Transaction {
             use cap_std::fs::PermissionsExt;
             root.set_permissions(".lrd-update", cap_std::fs::Permissions::from_mode(0o700))?;
         }
+        Self::with_dirs(root, control)
+    }
+    fn with_dirs(root: Dir, control: Dir) -> Result<Self> {
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(true);
         reject_special(&control, "lock")?;
@@ -75,11 +107,18 @@ impl Transaction {
             root,
             control,
             _lock: lock,
+            #[cfg(target_os = "macos")]
+            bundle: None,
         })
     }
     /// Copy all old members and authenticate all new bytes before replacement.
     /// A failed preparation leaves the installed application untouched.
     pub fn prepare(&self, package: &VerifiedPackage) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        if let Some(bundle) = &self.bundle {
+            bundle.verify_current()?;
+        }
+        let root = self.active_root()?;
         let mut history = self.history()?;
         let version = &package.manifest().version;
         if history.failures.get(version).copied().unwrap_or(0) >= 2 {
@@ -112,8 +151,8 @@ impl Transaction {
         let mut old_total = 0u64;
         let mut offset = 8;
         for (i, entry) in package.manifest().files.iter().enumerate() {
-            safe_parent(&self.root, &entry.path)?;
-            let old = match self.root.symlink_metadata(&entry.path) {
+            safe_parent(&root, &entry.path)?;
+            let old = match root.symlink_metadata(&entry.path) {
                 Ok(m) if m.is_file() && !m.file_type().is_symlink() => {
                     old_total = old_total
                         .checked_add(m.len())
@@ -121,7 +160,7 @@ impl Transaction {
                     if old_total > MAX_PACKAGE as u64 {
                         return fail("update backup size limit");
                     }
-                    let bytes = read(&self.root, &entry.path, MAX_PACKAGE)?;
+                    let bytes = read(&root, &entry.path, MAX_PACKAGE)?;
                     let executable = is_executable(&m);
                     atomic_write(&work, &format!("backup/{i}"), &bytes, executable)?;
                     Some(Previous {
@@ -150,6 +189,16 @@ impl Transaction {
             version: version.clone(),
             phase: Phase::Prepared,
             previous,
+            bundle: {
+                #[cfg(target_os = "macos")]
+                {
+                    self.bundle.is_some()
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    false
+                }
+            },
         };
         save(&work, &state)?;
         history.highest = Some(version.clone());
@@ -177,6 +226,7 @@ impl Transaction {
         let package = manifest.verify_package(read(&work, "package.lrdpkg", MAX_PACKAGE)?)?;
         let state: State = serde_json::from_slice(&read(&work, "state.json", 128 * 1024)?)?;
         if state.schema != 1
+            || state.bundle && !cfg!(target_os = "macos")
             || state.version != package.manifest().version
             || state.previous.len() != package.manifest().files.len()
         {
@@ -192,6 +242,15 @@ impl Transaction {
         state.phase = Phase::Applying;
         save(&work, &state)?;
         let result = (|| -> Result<()> {
+            #[cfg(target_os = "macos")]
+            if state.bundle {
+                self.bundle
+                    .as_ref()
+                    .ok_or("bundle transaction requires the Mac installer")?
+                    .apply(&work, &state, &package)?;
+                state.phase = Phase::AwaitingHealth;
+                return save(&work, &state);
+            }
             for (i, entry) in package.manifest().files.iter().enumerate() {
                 safe_parent(&self.root, &entry.path)?;
                 let current = digest_if_exists(&self.root, &entry.path)?;
@@ -224,8 +283,13 @@ impl Transaction {
         if state.phase != Phase::AwaitingHealth {
             return fail("update has no pending health check");
         }
+        #[cfg(target_os = "macos")]
+        if let Some(bundle) = &self.bundle {
+            bundle.verify_current()?;
+        }
+        let root = self.active_root()?;
         for entry in &package.manifest().files {
-            if digest_if_exists(&self.root, &entry.path)? != Some(entry.sha256.clone()) {
+            if digest_if_exists(&root, &entry.path)? != Some(entry.sha256.clone()) {
                 return fail("updated application changed before health confirmation");
             }
         }
@@ -263,27 +327,37 @@ impl Transaction {
             return fail("healthy update cannot be automatically reverted");
         }
         // Validate the entire recovery plan before writing any old member.
+        let root = self.active_root()?;
         for (i, entry) in package.manifest().files.iter().enumerate() {
-            safe_parent(&self.root, &entry.path)?;
+            safe_parent(&root, &entry.path)?;
             if let Some(old) = &state.previous[i] {
                 let bytes = read(&work, &format!("backup/{i}"), MAX_PACKAGE)?;
                 if bytes.len() as u64 != old.size || identity::fingerprint(&bytes) != old.sha256 {
                     return fail("backup integrity rejected; manual recovery needed");
                 }
             }
-            let current = digest_if_exists(&self.root, &entry.path)?;
+            let current = digest_if_exists(&root, &entry.path)?;
             if current != Some(entry.sha256.clone())
                 && current != state.previous[i].as_ref().map(|p| p.sha256.clone())
             {
                 return fail("application changed independently; manual recovery needed");
             }
         }
-        for (i, entry) in package.manifest().files.iter().enumerate() {
-            if let Some(old) = &state.previous[i] {
-                let bytes = read(&work, &format!("backup/{i}"), MAX_PACKAGE)?;
-                atomic_write(&self.root, &entry.path, &bytes, old.executable)?;
-            } else if self.root.exists(&entry.path) {
-                self.root.remove_file(&entry.path)?;
+        #[cfg(target_os = "macos")]
+        if state.bundle {
+            self.bundle
+                .as_ref()
+                .ok_or("bundle recovery requires the Mac installer")?
+                .rollback(&work, &state, &package)?;
+        }
+        if !state.bundle {
+            for (i, entry) in package.manifest().files.iter().enumerate() {
+                if let Some(old) = &state.previous[i] {
+                    let bytes = read(&work, &format!("backup/{i}"), MAX_PACKAGE)?;
+                    atomic_write(&root, &entry.path, &bytes, old.executable)?;
+                } else if root.exists(&entry.path) {
+                    root.remove_file(&entry.path)?;
+                }
             }
         }
         // Count once. Re-running an interrupted rollback does not unblock a bad
@@ -307,6 +381,13 @@ impl Transaction {
         }
         state.phase = Phase::RolledBack;
         save(&work, &state)
+    }
+    fn active_root(&self) -> Result<Dir> {
+        #[cfg(target_os = "macos")]
+        if let Some(bundle) = &self.bundle {
+            return bundle.current();
+        }
+        Ok(self.root.try_clone()?)
     }
     fn history(&self) -> Result<History> {
         if !self.control.exists("history.json") {

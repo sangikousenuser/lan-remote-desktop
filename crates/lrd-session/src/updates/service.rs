@@ -175,14 +175,15 @@ pub fn bootstrap(installed: &str) -> Result<bool> {
         return Ok(false);
     }
     let platform = Platform::current()?;
-    let pending = root.join(".lrd-update/transaction/state.json").exists();
+    let pending = Transaction::application_state_path(&root)?.exists()
+        || cfg!(target_os = "macos") && root.join(".lrd-update").exists();
     if !pending && newest_staged(&stage_directory()?, &platform.policy(installed))?.is_none() {
         return Ok(false);
     }
     // Healthy history also has a state file, so the helper checks its phase.
     // Do not hand off every launch when no recovery or staged update is needed.
     if pending && newest_staged(&stage_directory()?, &platform.policy(installed))?.is_none() {
-        match Transaction::open(&root)
+        match Transaction::open_application(&root)
             .and_then(|tx| tx.recovery_needed(&platform.policy(installed)))
         {
             Ok(false) => return Ok(false),
@@ -237,7 +238,7 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
     wait_for_parent(wait_pid)?;
     let result = (|| -> Result<bool> {
         let lease = runtime_lease(&root)?.ok_or("application is still active; update deferred")?;
-        let tx = Transaction::open(&root)?;
+        let tx = Transaction::open_application(&root)?;
         let policy = platform.policy(installed);
         tx.recover(&policy)?;
         let Some((stage, package)) = newest_staged(&stage_directory()?, &policy)? else {
@@ -334,7 +335,7 @@ pub fn restart_helper(installed: &str, wait_pid: u32) -> Result<()> {
             // If replacement/recovery itself failed, do not start a partially
             // replaced application. An unwritable installation was never changed.
             let lease = runtime_lease(&root)?.ok_or("application is active; restart deferred")?;
-            match Transaction::open(&root) {
+            match Transaction::open_application(&root) {
                 Ok(tx) => {
                     tx.recover(&platform.policy(installed))?;
                 }
