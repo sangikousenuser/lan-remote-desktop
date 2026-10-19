@@ -104,6 +104,14 @@ impl Drop for SessionLease {
         }
     }
 }
+impl SessionLease {
+    fn check_deadline(&self) -> Result<()> {
+        if self.previous_deadline.is_some_and(|at| Instant::now() > at) {
+            return Err("resume authorization expired during initialization".into());
+        }
+        Ok(())
+    }
+}
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DisplayRequest {
@@ -258,14 +266,15 @@ fn run_once(args: &[String]) -> Result<()> {
     if let Some(_lease) = Controller::acquire() {
         super::display::recover()?;
     }
-    let listener = nic.listen(network::PORT)?;
+    let network::HostBinding {
+        listener,
+        discovery,
+        port,
+    } = nic.bind_host()?;
     listener.set_nonblocking(true)?;
     super::tray::start(format!(
         "{} — {}:{} / Windows session {}",
-        nic.label,
-        nic.address,
-        network::PORT,
-        user_session
+        nic.label, nic.address, port, user_session
     ));
     let stop = Arc::new(AtomicBool::new(false));
     let _discovery = network::advertise(
@@ -274,11 +283,12 @@ fn run_once(args: &[String]) -> Result<()> {
             major: 1,
             name: format!("Windows Host / session {user_session}"),
             fingerprint: identity.fingerprint(),
-            port: network::PORT,
+            port,
             user_session,
             nonce: 0,
         },
         stop.clone(),
+        discovery,
     )?;
     struct StopAdvertisement(Arc<AtomicBool>);
     impl Drop for StopAdvertisement {
@@ -289,10 +299,7 @@ fn run_once(args: &[String]) -> Result<()> {
     let _stop_advertisement = StopAdvertisement(stop);
     println!(
         "Ethernet {}: {}:{} / user session {}",
-        nic.label,
-        nic.address,
-        network::PORT,
-        user_session
+        nic.label, nic.address, port, user_session
     );
     println!("Macアプリで探索して接続してください。初回は両方の画面に同じ確認コードが出ます。");
     static BACKGROUND: std::sync::Once = std::sync::Once::new();
@@ -334,7 +341,10 @@ fn run_once(args: &[String]) -> Result<()> {
                 continue;
             }
         };
-        if !accepting() || pending.swap(true, Ordering::AcqRel) {
+        if !network::interactive_session(user_session)
+            || !accepting()
+            || pending.swap(true, Ordering::AcqRel)
+        {
             drop(socket);
             continue;
         }
@@ -379,6 +389,9 @@ fn serve(
     monitor: u32,
     fps: u32,
 ) -> Result<()> {
+    if !network::interactive_session(user_session) {
+        return Err("Windows session is not interactive".into());
+    }
     let mut tls = Tls::server(socket, identity)?;
 
     Packet::json(
@@ -405,31 +418,41 @@ fn serve(
     }
     let peer_certificate = tls.peer_certificate()?;
     let peer_pin = lrd_session::identity::fingerprint(&peer_certificate);
-    let (control, resumed, previous_deadline) = {
+    let paired = identity.trusted(&peer_certificate)?;
+    let claimed = {
         let mut book = reservations()
             .lock()
             .map_err(|_| "controller lock failed")?;
         if let Some(token) = hello.resume_token.as_deref() {
-            if !identity.trusted(&peer_certificate)? {
-                return Err("resume identity is not paired".into());
-            }
-            if let Some((lease, deadline)) =
+            if paired {
                 book.claim_with_deadline(&peer_pin, token, Instant::now())
-            {
-                (lease, true, Some(deadline))
+                    .map(|(lease, deadline)| (lease, true, Some(deadline)))
             } else {
-                return Err("resume authorization expired or changed".into());
+                None
             }
         } else {
             if book.reserved(Instant::now()) {
-                return Err("SESSION_BUSY: previous controller reconnect grace".into());
+                None
+            } else {
+                Controller::acquire().map(|lease| (lease, false, None))
             }
-            (
-                Controller::acquire().ok_or("SESSION_BUSY: another Mac controls this PC")?,
-                false,
-                None,
-            )
         }
+    };
+    let Some((control, resumed, previous_deadline)) = claimed else {
+        let error = if hello.resume_token.is_some() {
+            wire::HandshakeError::ResumeExpired
+        } else {
+            wire::HandshakeError::SessionBusy
+        };
+        Packet::json(
+            wire::HELLO,
+            &wire::ResumeAck {
+                resumed: false,
+                error: Some(error),
+            },
+        )?
+        .write(&mut tls)?;
+        return Err(format!("connection refused: {error:?}").into());
     };
     let manual = Arc::new(AtomicBool::new(false));
     let mut lease = SessionLease {
@@ -440,7 +463,14 @@ fn serve(
         live: false,
         manual: manual.clone(),
     };
-    Packet::json(wire::HELLO, &wire::ResumeAck { resumed })?.write(&mut tls)?;
+    Packet::json(
+        wire::HELLO,
+        &wire::ResumeAck {
+            resumed,
+            error: None,
+        },
+    )?
+    .write(&mut tls)?;
     let peer = tls::approve(&mut tls, identity, false, |info| {
         let message=HSTRING::from(format!("Macの確認コードと一致しますか？\n\n{}\n\n端末: {}\n\n一致を確認した場合だけ「はい」を選択してください。",info.code,info.fingerprint));
         unsafe {
@@ -451,7 +481,12 @@ fn serve(
                 MB_YESNO | MB_ICONQUESTION | MB_TOPMOST,
             ) == IDYES
         }
+    }).inspect_err(|error| {
+        if error.downcast_ref::<std::io::Error>().is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied) {
+            manual.store(true, Ordering::Release);
+        }
     })?;
+    lease.check_deadline()?;
     if !resumed {
         super::display::recover()?;
     }
@@ -473,6 +508,7 @@ fn serve(
             lrd_session::resume::token()?
         },
     };
+    lease.check_deadline()?;
     Packet::json(wire::CONFIG, &config)?.write(&mut tls)?;
     lease.live = true;
     lease.token = config.resume_token.clone();
@@ -509,8 +545,14 @@ fn serve(
         worker: None,
     };
     let watcher = sender.clone();
+    let session_manual = manual.clone();
     std::thread::spawn(move || {
         while !watcher.stopped() {
+            if !network::interactive_session(user_session) {
+                session_manual.store(true, Ordering::Release);
+                watcher.abort();
+                break;
+            }
             if !nic.current() {
                 watcher.abort();
                 break;

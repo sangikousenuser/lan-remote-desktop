@@ -12,10 +12,10 @@
 |---|---|---|
 | Ethernet/探索 | 物理有線を選択、送受信NIC/IPv4拘束、同一subnet限定、UDP broadcast、NIC監視、Windows weak-host/forwarding拒否 | 両OS/複数NICでの実パケット確認。DHCP/Link-LocalそのものはOSの機能 |
 | 端末認証 | TLS 1.3相互署名、exporter確認コード、両端初回承認、fingerprint保存、Mac毎回承認 | 実機で拒否/鍵変更/非対称登録を操作確認 |
-| Host排他 | PC全体Global mutex、所有thread、ユーザーセッション識別、猶予中のlease保持 | Windows複数ログイン/別Mac競合。待受ポートは共通で、複数ユーザーHost同時待受には制約あり |
+| Host排他 | PC全体Global mutex、所有thread、ユーザーセッション識別、猶予中のlease保持 | Windows複数ログイン/別Mac競合。TCP/探索UDPを32組の排他的なユーザー別スロットで確保。非対話セッションは探索へ応答しない |
 | 映像 | DXGI staging、NV12、非同期HW H.264 MFT優先＋software fallback、NAL配信、VT/Metal/CPU描画、keyframe要求、静止時の再同期 | GPU surface共有、実HW MFT互換、60fps/低遅延・色・長時間試験 |
 | 入力 | SendInput、JIS/US物理検出、かなON/英数OFF、Command変換、絶対/相対マウス、緊急解放、世代/順序検査 | Windows IME/配列/ゲーム別試験。secure desktop/UIPI制約 |
-| 再接続 | 120秒、同じ証明書・同じWindows session・secret ticket、TLS鍵/入力世代更新、手動切断抑止、初期化失敗で期限維持 | 実際の抜線、NICアドレス変更、121秒、復帰前後の入力試験 |
+| 再接続 | 120秒、同じ証明書・同じWindows session・secret ticket、TLS鍵/入力世代更新、手動切断抑止、初期化失敗で期限維持、同じMACのNICで再探索、IP/port変更へ追従 | 実際の抜線、NICアドレス変更、121秒、復帰前後の入力試験 |
 | モニター/解像度 | 複数モニター選択、対応モード列挙、Mac物理/論理画素表示、比率維持、変更前journal、条件付き復元、猶予後/再起動時照合 | Windows表示ドライバーごとの変更/強制終了/手動変更試験 |
 | 品質/指標 | encode負荷/RTT/queueのヒステリシス、fps/bitrate制御、数値診断、送受信量、RTT、描画/復号fps、CPU/RAM、7日/100MiBの数値ログと検査済みexport | 実入力→光学表示遅延、詳細工程時間/GPU使用率、転送速度/復帰回数、損失/画面内容/入力頻度を使う品質制御の完成 |
 | 音声 | WASAPI loopback、PCM多ch縮約、CoreAudio、bounded queue、Windowsのみ/両方、Macのみ制限案内 | Opus、デバイス変更/音映像同期/長時間実測。Windows muteで代用しない |

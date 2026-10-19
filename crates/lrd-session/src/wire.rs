@@ -79,6 +79,15 @@ pub struct Hello {
 #[serde(deny_unknown_fields)]
 pub struct ResumeAck {
     pub resumed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<HandshakeError>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HandshakeError {
+    SessionBusy,
+    ResumeExpired,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -200,6 +209,35 @@ impl InputPacket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn successful_resume_ack_stays_compatible_and_errors_are_typed() {
+        let ack = ResumeAck {
+            resumed: true,
+            error: None,
+        };
+        assert_eq!(serde_json::to_string(&ack).unwrap(), r#"{"resumed":true}"#);
+        assert!(
+            serde_json::from_str::<ResumeAck>(r#"{"resumed":true}"#)
+                .unwrap()
+                .resumed
+        );
+        let rejection = Packet::json(
+            HELLO,
+            &ResumeAck {
+                resumed: false,
+                error: Some(HandshakeError::SessionBusy),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            rejection.parse::<ResumeAck>().unwrap().error,
+            Some(HandshakeError::SessionBusy)
+        );
+        assert!(serde_json::from_str::<ResumeAck>(
+            r#"{"resumed":false,"error":"untrusted free text"}"#
+        )
+        .is_err());
+    }
     #[test]
     fn rejects_huge_prefix_before_allocation() {
         let mut bytes = &[1, VIDEO, 255, 255, 255, 255][..];

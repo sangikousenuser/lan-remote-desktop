@@ -371,7 +371,11 @@ pub fn approve(
     let mut remote = [0];
     tls.read_exact(&mut remote)?;
     if !allowed || remote != [1] {
-        return fail("connection rejected by user");
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "connection rejected by user",
+        )
+        .into());
     }
     if first_pair {
         identity.trust(&certificate)?;

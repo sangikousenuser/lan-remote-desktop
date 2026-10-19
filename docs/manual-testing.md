@@ -88,3 +88,9 @@ cargo test --locked -p lrd-session large_file_over_one_gib -- --ignored --nocapt
 ```
 
 本人の映像や音声を記録しない合成テストで先に確認してください。これらはWindows↔Macの実LAN受入試験とは別です。
+
+### 複数ユーザーとアドレス変更
+
+HostはTCP 47990から32刻みで最大32組、探索は各TCPの次のUDPを排他的に確保します。手動接続ではHostが実際に表示したIP:portを指定してください。限定Firewallスクリプトはこの32組だけを許可します。別ユーザーでHostを起動しても待受を奪わず、操作権はPC全体で1台に制限します。非対話ログイン先への探索応答は停止します。
+
+抜線後にDHCPアドレスが変わった場合、Macは元の物理NICのMACで再探索し、元の証明書fingerprintとWindows sessionが一致する候補だけを使用します。探索情報自体は信頼せず、TLSで元の鍵を再検証してからticketを送ります。別ログイン先にはticketを送りません。120秒を過ぎる初期化、承認拒否、失効ticket、BUSYを確認してください。

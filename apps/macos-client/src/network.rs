@@ -85,6 +85,7 @@ pub unsafe extern "C" fn lrd_connect(index: u32, address: *const c_char) {
         }
     }
     std::thread::spawn(move || {
+        let mut address = address;
         let mut resume: Option<Resume> = None;
         let mut outage: Option<Instant> = None;
         loop {
@@ -103,6 +104,12 @@ pub unsafe extern "C" fn lrd_connect(index: u32, address: *const c_char) {
                     return;
                 }
                 Err(error) => {
+                    if error
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied)
+                    {
+                        resume = None;
+                    }
                     if established || outage.is_none() {
                         outage = Some(Instant::now());
                     }
@@ -116,7 +123,21 @@ pub unsafe extern "C" fn lrd_connect(index: u32, address: *const c_char) {
                         generation,
                         "Ethernet接続の復帰を待っています（最大120秒）。入力は停止しています。",
                     );
-                    std::thread::sleep(Duration::from_secs(1));
+                    // Advertisements only suggest a new address. The next TLS
+                    // handshake still requires the original certificate pin.
+                    if let Some(previous) = resume.as_ref() {
+                        if let Ok(nic) = Nic::select_mac(&previous.nic_mac) {
+                            if let Ok(hosts) = network::discover(&nic, Duration::from_millis(700)) {
+                                if let Some((endpoint, _)) = hosts.into_iter().find(|(_, host)| {
+                                    host.fingerprint == previous.pin
+                                        && host.user_session == previous.user_session
+                                }) {
+                                    address = endpoint.to_string();
+                                }
+                            }
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(300));
                 }
             }
         }
@@ -126,6 +147,7 @@ struct Resume {
     pin: String,
     token: String,
     user_session: u32,
+    nic_mac: String,
 }
 fn connection(
     index: u32,
@@ -134,7 +156,10 @@ fn connection(
     resume: &mut Option<Resume>,
     established: &mut bool,
 ) -> Result<()> {
-    let nic = Nic::select(index)?;
+    let nic = match resume.as_ref() {
+        Some(previous) => Nic::select_mac(&previous.nic_mac)?,
+        None => Nic::select(index)?,
+    };
     let identity = Identity::load_or_create(&data_directory()?)?;
     status(generation, "Ethernet経由で暗号化接続しています…");
     let remote = address.parse::<std::net::SocketAddr>().or_else(|_| {
@@ -155,6 +180,13 @@ fn connection(
     if hello.major != 1 || hello.role != "host" {
         return fail("unsupported Host protocol");
     }
+    if resume
+        .as_ref()
+        .is_some_and(|r| r.user_session != hello.user_session)
+    {
+        *resume = None;
+        return fail("Windowsユーザーセッションが変わりました。接続を承認し直してください。");
+    }
     Packet::json(
         wire::HELLO,
         &Hello {
@@ -166,18 +198,22 @@ fn connection(
         },
     )?
     .write(&mut tls)?;
-    if resume
-        .as_ref()
-        .is_some_and(|r| r.user_session != hello.user_session)
-    {
-        *resume = None;
-        return fail("Windowsユーザーセッションが変わりました。接続を承認し直してください。");
-    }
     let ack = Packet::read(&mut tls)?;
     if ack.kind != wire::HELLO {
         return fail("resume negotiation required");
     }
     let ack: wire::ResumeAck = ack.parse()?;
+    if let Some(error) = ack.error {
+        *resume = None;
+        return fail(match error {
+            wire::HandshakeError::SessionBusy => {
+                "このPCは別のMacが操作中、または再接続の猶予中です。"
+            }
+            wire::HandshakeError::ResumeExpired => {
+                "再接続の承認が失効しました。「接続」から承認し直してください。"
+            }
+        });
+    }
     if resume.is_some() && !ack.resumed {
         *resume = None;
         return fail("再接続の承認が失効しました。「接続」から承認し直してください。");
@@ -210,6 +246,7 @@ fn connection(
         pin: peer.clone(),
         token: config.resume_token.clone(),
         user_session: hello.user_session,
+        nic_mac: nic.mac.clone(),
     });
     *established = true;
     let (sender, receiver) = channel::start(tls)?;
