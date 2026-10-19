@@ -21,6 +21,7 @@ extern bool lrd_control_json(const uint8_t *,size_t);
 extern void lrd_startup_ready(void);
 extern char *lrd_resource_statistics_json(void);
 extern void lrd_record_metrics_json(const uint8_t *,size_t);
+extern char *lrd_choose_display_json(const uint8_t *,size_t);
 extern bool lrd_export_numeric_logs(const char *);
 
 
@@ -49,7 +50,8 @@ extern bool lrd_export_numeric_logs(const char *);
 @property(strong) AVAssetReaderTrackOutput *output;
 @property(strong) NSURL *url;
 @property(copy) NSString *error;
-@property BOOL allowSoftware;
+@property BOOL softwareOnly;
+@property unsigned int decodeFailureStreak;
 - (BOOL)open:(NSURL *)url;
 - (BOOL)step;
 - (BOOL)decodeSample:(CMSampleBufferRef)sample;
@@ -124,8 +126,8 @@ static void decodedFrame(void *context, void *source, OSStatus status, VTDecodeI
         self.error = @"映像サイズが上限を超えています。"; CFRelease(sample); return NO;
     }
     if (!session) {
-        NSDictionary *spec = self.allowSoftware ? @{} : @{
-            (__bridge NSString *)kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: @YES
+        NSDictionary *spec = @{
+            (__bridge NSString *)kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: self.softwareOnly ? @NO : @YES
         };
         NSDictionary *attrs = @{
             (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
@@ -135,8 +137,14 @@ static void decodedFrame(void *context, void *source, OSStatus status, VTDecodeI
         VTDecompressionOutputCallbackRecord cb = { decodedFrame, (__bridge void *)self };
         OSStatus result = VTDecompressionSessionCreate(kCFAllocatorDefault, format,
             (__bridge CFDictionaryRef)spec, (__bridge CFDictionaryRef)attrs, &cb, &session);
+        if(result!=noErr&&!self.softwareOnly){
+            if(session){VTDecompressionSessionInvalidate(session);CFRelease(session);session=NULL;}
+            self.softwareOnly=YES;
+            NSDictionary *fallback=@{(__bridge NSString*)kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder:@NO};
+            result=VTDecompressionSessionCreate(kCFAllocatorDefault,format,(__bridge CFDictionaryRef)fallback,(__bridge CFDictionaryRef)attrs,&cb,&session);
+        }
         if (result != noErr) {
-            self.error = [NSString stringWithFormat:@"VideoToolbox初期化失敗 (%d)。GPU非対応または使用中です。", (int)result];
+            self.error = [NSString stringWithFormat:@"VideoToolbox初期化失敗 (%d)。映像形式と復号器の対応を確認してください。", (int)result];
             CFRelease(sample); return NO;
         }
         CFTypeRef value = NULL;
@@ -153,13 +161,20 @@ static void decodedFrame(void *context, void *source, OSStatus status, VTDecodeI
     // With both asynchronous/temporal flags clear, Apple's API completes the
     // output callback before return. This measures decode, not queue submission.
     double decodeAt=CACurrentMediaTime();
+    uint64_t failuresBefore=atomic_load(&failures);
     OSStatus result = VTDecompressionSessionDecodeFrame(session, sample, 0, NULL, NULL);
     atomic_fetch_add(&decodeMicros,(uint64_t)(MAX(0.,CACurrentMediaTime()-decodeAt)*1e6));
     CFRelease(sample);
-    if (result != noErr) {
+    if (result != noErr || atomic_load(&failures)>failuresBefore) {
+        self.decodeFailureStreak=MIN(3,self.decodeFailureStreak+1);
+        if(self.decodeFailureStreak>=3&&!self.softwareOnly&&atomic_load(&hardware)){
+            VTDecompressionSessionInvalidate(session);CFRelease(session);session=NULL;
+            self.softwareOnly=YES;atomic_store(&hardware,false);
+        }
         self.error = [NSString stringWithFormat:@"H.264デコード失敗 (%d)。", (int)result];
-        atomic_fetch_add(&failures, 1); return NO;
+        if(atomic_load(&failures)==failuresBefore)atomic_fetch_add(&failures, 1); return NO;
     }
+    self.decodeFailureStreak=0;self.error=nil;
     return YES;
 }
 - (BOOL)feedAnnexB:(NSData *)data {
@@ -302,6 +317,9 @@ extern bool lrd_agent_configure(uint32_t index);
 @property uint64_t lastDecodedCount;
 @property double lastDecodedAt;
 @property BOOL relativeMouse;
+@property BOOL automaticDisplayPending;
+@property double lastDecodeDurationMs;
+@property double lastRenderDurationMs;
 @property double lastRelativeSuggestion;
 @property BOOL windowsCommand;
 @property BOOL jisKeyboard;
@@ -432,6 +450,8 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     NSArray *audioTitles=@[@"音声: Windowsのみ",@"音声: 両方から再生",@"音声: Macのみ"];
     for(NSUInteger i=0;i<audioTitles.count;i++){NSMenuItem *item=[viewMenu addItemWithTitle:audioTitles[i] action:@selector(audioMode:) keyEquivalent:@""];item.target=self;item.tag=(NSInteger)i;}
     NSMenuItem *display=[viewMenu addItemWithTitle:@"モニターと表示モード…" action:@selector(displaySettings:) keyEquivalent:@"m"];display.target=self;display.keyEquivalentModifierMask=NSEventModifierFlagControl|NSEventModifierFlagOption;
+    NSMenuItem *automatic=[viewMenu addItemWithTitle:@"Macに合わせてWindows解像度を自動調整" action:@selector(automaticDisplay:) keyEquivalent:@""];automatic.target=self;
+    automatic.state=[[NSUserDefaults standardUserDefaults] boolForKey:@"keepWindowsResolution"]?NSControlStateValueOff:NSControlStateValueOn;
     self.jisKeyboard=KBGetLayoutType(LMGetKbdType())==kKeyboardJIS;
     NSMenuItem *agent=[appMenu addItemWithTitle:@"ログイン時に選択Ethernetを監視" action:@selector(agent:) keyEquivalent:@""];agent.target=self;
     agent.state=[[NSFileManager defaultManager] fileExistsAtPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Library/LaunchAgents/local.lanremotedesktop.agent.plist"]]?NSControlStateValueOn:NSControlStateValueOff;
@@ -455,7 +475,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     (void)sender; if (self.remoteConnected) [self disconnect:nil]; [self stop:nil]; self.lastError = nil; self.exitCode = 0;
     NSString *path = self.videoPath ?: [[NSBundle mainBundle] pathForResource:@"test-pattern" ofType:@"mp4"];
     if (!path) { self.status.stringValue = @"検証映像がありません。「映像ファイルを選択」からH.264のMP4を選んでください。"; self.lastError = self.status.stringValue; self.exitCode = 2; if (self.smoke) { [self writeReport:self.reportPath]; [NSApp terminate:nil]; } return; }
-    self.decoder = [LRDDecoder new]; self.decoder.allowSoftware = self.forceSoftware;
+    self.decoder = [LRDDecoder new]; self.decoder.softwareOnly = self.forceSoftware;
     self.started = CACurrentMediaTime(); self.elapsed = 0;
     [self prepareRenderer];
     self.status.stringValue = @"ローカル検証中。実測値はこのMacの結果です。High Sierraの互換性は別途確認が必要です。";
@@ -500,6 +520,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
         self.metalView.framebufferOnly = NO; self.metalView.preferredFramesPerSecond = 60;
         self.metalView.clearColor = MTLClearColorMake(0, 0, 0, 1); self.metalView.delegate = self;
         self.commands = [device newCommandQueue]; self.context = [CIContext contextWithMTLDevice:device];
+        if(!self.commands||!self.context){self.forceSoftware=YES;[self prepareRenderer];return;}
         self.renderer = @"Metal"; [self.videoContainer addSubview:self.metalView];
     } else {
         self.softwareView = [[LRDSoftwareView alloc] initWithFrame:self.videoContainer.bounds];
@@ -526,7 +547,8 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     if (!self.decoder) return;
     double seconds = MAX(0.001, self.elapsed > 0 ? self.elapsed : CACurrentMediaTime() - self.started);
     uint64_t decodedCount=atomic_load(&self.decoder->decoded);double now=CACurrentMediaTime();
-    if(decodedCount!=self.lastDecodedCount){self.lastDecodedCount=decodedCount;self.lastDecodedAt=now;
+    uint64_t shown=atomic_load(&self.decoder->presented);
+    if(shown!=self.lastDecodedCount){self.lastDecodedCount=shown;self.lastDecodedAt=now;
         if(self.remoteConnected && self.awaitingFrame && self.window.isKeyWindow){self.awaitingFrame=NO;self.captureInput=YES;self.status.stringValue=@"映像を受信しました。⌃⌥⌘Escで入力をMacへ戻せます。";}
     }
     if(self.remoteConnected && self.captureInput && now-self.lastDecodedAt>3){[self sendInput:@{@"event":@"Release"}];[self releaseRelativeMouse];self.captureInput=NO;self.awaitingFrame=YES;self.status.stringValue=@"映像の更新を待っています。入力を一時停止しました。";}
@@ -547,6 +569,8 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     uint64_t errors=atomic_load(&self.decoder->failures),dropped=atomic_load(&droppedNetworkFrames);
     if(self.remoteConnected && self.lastMetricsAt>0 && decodedCount>=self.lastMetricsDecoded && presentedCount>=self.lastMetricsPresented){
         uint64_t decoded=decodedCount-self.lastMetricsDecoded,presented=presentedCount-self.lastMetricsPresented,gpu=gpuFrames-self.lastGpuFrames;
+        if(decoded>0)self.lastDecodeDurationMs=(decodeUs-self.lastDecodeMicros)/(1000.*decoded);
+        if(presented>0)self.lastRenderDurationMs=(renderUs-self.lastRenderMicros)/(1000.*presented);
         NSDictionary *window=@{@"interval_ms":@((uint32_t)MIN(10001,dt*1000)),@"decoded":@(decoded),@"presented":@(presented),
             @"decode_ms":@(decoded?(decodeUs-self.lastDecodeMicros)/(1000.*decoded):0.),
             @"render_ms":@(presented?(renderUs-self.lastRenderMicros)/(1000.*presented):0.),
@@ -561,6 +585,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     self.lastDecodeMicros=decodeUs;self.lastRenderMicros=renderUs;self.lastGpuMicros=gpuUs;self.lastGpuFrames=gpuFrames;
     self.lastMetricsErrors=errors;self.lastMetricsDropped=dropped;self.lastMetricsReceived=self.receivedBytes;
     [self updateDashboard];
+    [self applyAutomaticDisplay];
 }
 - (void)exportLogs:(id)sender {
     (void)sender;NSSavePanel *panel=[NSSavePanel savePanel];panel.allowedFileTypes=@[@"json"];panel.nameFieldStringValue=@"LAN-Remote-Desktop-diagnostics.json";
@@ -598,7 +623,16 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
                     if(isfinite(gpu)&&gpu>=0&&completed.GPUStartTime>0){atomic_fetch_add(&decoder->gpuMicros,(uint64_t)(gpu*1e6));atomic_fetch_add(&decoder->gpuFrames,1);}
                 }
             }
-        } else atomic_fetch_add(&decoder->failures, 1);
+        } else {
+            atomic_fetch_add(&decoder->failures, 1);
+            dispatch_async(dispatch_get_main_queue(),^{
+                if(self.decoder!=decoder||self.forceSoftware)return;
+                if(self.remoteConnected)[self sendInput:@{@"event":@"Release"}];
+                [self releaseRelativeMouse];self.captureInput=NO;self.awaitingFrame=self.remoteConnected;
+                self.forceSoftware=YES;[self prepareRenderer];
+                self.status.stringValue=@"GPU描画を継続できないためCPU描画へ切り替えました。表示の復帰を待っています。";
+            });
+        }
     }];
     [command presentDrawable:drawable]; [command commit]; CVPixelBufferRelease(buffer);
 }
@@ -711,10 +745,10 @@ int lrd_client_main(int argc, const char *const *argv) {
 uint64_t lrd_decode_annexb_probe(const uint8_t *bytes,size_t length) {
     @autoreleasepool {
         if (!bytes || length>8*1024*1024) return 0;
-        LRDDecoder *decoder=[LRDDecoder new];decoder.allowSoftware=YES;
+        LRDDecoder *decoder=[LRDDecoder new];decoder.softwareOnly=YES;
         if (![decoder feedAnnexB:[NSData dataWithBytes:bytes length:length]]) return 0;
         if (decoder->session) VTDecompressionSessionWaitForAsynchronousFrames(decoder->session);
-        return atomic_load(&decoder->decoded);
+        return atomic_load(&decoder->hardware)?0:atomic_load(&decoder->decoded);
     }
 }
 

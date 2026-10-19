@@ -2,6 +2,30 @@ use lrd_session::{
     diagnostics::{self, Sample},
     quality::Feedback,
 };
+#[no_mangle]
+/// # Safety
+/// The caller supplies `length` readable JSON bytes. Free the owned result
+/// using `lrd_free_string`.
+pub unsafe extern "C" fn lrd_choose_display_json(
+    bytes: *const u8,
+    length: usize,
+) -> *mut std::ffi::c_char {
+    if bytes.is_null() || length > 32768 {
+        return std::ptr::null_mut();
+    }
+    let result = serde_json::from_slice::<lrd_session::display_choice::Client>(unsafe {
+        std::slice::from_raw_parts(bytes, length)
+    })
+    .ok()
+    .and_then(|client| lrd_session::display_choice::choose(&client));
+    let Some(mode) = result else {
+        return std::ptr::null_mut();
+    };
+    serde_json::to_string(&mode)
+        .ok()
+        .and_then(|s| std::ffi::CString::new(s).ok())
+        .map_or(std::ptr::null_mut(), |s| s.into_raw())
+}
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Window {

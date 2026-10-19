@@ -44,12 +44,13 @@
 }
 - (void)recapture:(id)sender {
     (void)sender;if (!self.remoteConnected) return;
-    if(!self.decoder || atomic_load(&self.decoder->decoded)==0){self.awaitingFrame=YES;self.status.stringValue=@"操作前に最初の映像を待っています。";return;}
+    if(!self.decoder || atomic_load(&self.decoder->presented)==0 || CACurrentMediaTime()-self.lastDecodedAt>3){self.awaitingFrame=YES;self.status.stringValue=@"操作前に映像の描画を待っています。";return;}
     self.captureInput=YES;self.awaitingFrame=NO;self.previousModifiers=0;
     self.status.stringValue=@"入力を取得しました。⌃⌥⌘EscでMac側へ戻せます。";
 }
 - (void)relative:(id)sender {
     if (!self.remoteConnected) return;
+    if(!self.captureInput){self.status.stringValue=@"映像の描画後に入力を再取得してから、相対マウスを有効にしてください。";return;}
     [self sendInput:@{@"event":@"Release"}];
     self.relativeMouse=!self.relativeMouse;
     if(self.relativeMouse){
@@ -167,8 +168,10 @@
     if (kind==2) {
         NSDictionary *config=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
         BOOL firstConnection=!self.remoteConnected;
+        self.automaticDisplayPending=firstConnection&&![config[@"resumed"] boolValue]&&![[NSUserDefaults standardUserDefaults] boolForKey:@"keepWindowsResolution"];
         self.monitors=config[@"monitors"];self.currentMonitor=[config[@"monitor"] integerValue];
-        [self stop:nil];self.decoder=[LRDDecoder new];self.decoder.allowSoftware=self.forceSoftware;
+        [self stop:nil];self.decoder=[LRDDecoder new];self.decoder.softwareOnly=self.forceSoftware;
+        self.lastDecodeDurationMs=0;self.lastRenderDurationMs=0;
         self.remoteWidth=[config[@"width"] unsignedIntValue];self.remoteHeight=[config[@"height"] unsignedIntValue];
         self.started=CACurrentMediaTime();self.elapsed=0;[self prepareRenderer];
         self.remoteConnected=YES;self.captureInput=NO;self.awaitingFrame=YES;self.previousModifiers=0;self.lastDecodedCount=0;self.lastDecodedAt=CACurrentMediaTime();

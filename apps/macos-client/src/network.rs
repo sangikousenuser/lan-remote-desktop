@@ -339,7 +339,7 @@ fn connection(
         generation,
         2,
         &serde_json::to_vec(
-            &serde_json::json!({"width":config.width,"height":config.height,"fps":config.fps,"monitor":config.monitor,"monitors":config.monitors}),
+            &serde_json::json!({"width":config.width,"height":config.height,"fps":config.fps,"monitor":config.monitor,"monitors":config.monitors,"resumed":ack.resumed}),
         )?,
     );
     let watch = sender.clone();

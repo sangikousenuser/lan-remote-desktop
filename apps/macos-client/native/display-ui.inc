@@ -9,6 +9,7 @@
 }
 - (void)displaySettings:(id)sender {
     (void)sender;if(!self.remoteConnected)return;
+    self.automaticDisplayPending=NO;
     [self sendInput:@{@"event":@"Release"}];[self releaseRelativeMouse];self.captureInput=NO;
     NSView *view=[[NSView alloc] initWithFrame:NSMakeRect(0,0,450,100)];
     self.displayMonitors=[[NSPopUpButton alloc] initWithFrame:NSMakeRect(0,64,450,30) pullsDown:NO];
@@ -25,6 +26,35 @@
         if(self.displayModes.selectedItem.representedObject)request[@"mode"]=self.displayModes.selectedItem.representedObject;
         [self sendControl:@{@"display":request}];
     }else [self recapture:nil];
+}
+- (void)automaticDisplay:(NSMenuItem *)sender {
+    BOOL disabled=[[NSUserDefaults standardUserDefaults] boolForKey:@"keepWindowsResolution"];
+    [[NSUserDefaults standardUserDefaults] setBool:!disabled forKey:@"keepWindowsResolution"];
+    sender.state=disabled?NSControlStateValueOn:NSControlStateValueOff;
+    self.automaticDisplayPending=disabled&&self.remoteConnected;
+}
+- (void)applyAutomaticDisplay {
+    if(!self.automaticDisplayPending||!self.remoteConnected||!self.decoder||atomic_load(&self.decoder->presented)<2||CACurrentMediaTime()-self.started<1.||self.lastDecodeDurationMs<=0||self.lastRenderDurationMs<=0)return;
+    self.automaticDisplayPending=NO;
+    NSDictionary *monitor=nil;for(NSDictionary *candidate in self.monitors)if([candidate[@"id"] integerValue]==self.currentMonitor){monitor=candidate;break;}
+    if(!monitor)return;
+    NSScreen *screen=self.window.screen?:NSScreen.mainScreen;if(!screen)return;
+    double hz=60.;NSNumber *displayNumber=screen.deviceDescription[@"NSScreenNumber"];
+    if(displayNumber){CGDisplayModeRef mode=CGDisplayCopyDisplayMode(displayNumber.unsignedIntValue);if(mode){double rate=CGDisplayModeGetRefreshRate(mode);if(isfinite(rate)&&rate>=1)hz=rate;CGDisplayModeRelease(mode);}}
+    NSDictionary *capabilities=@{@"physical_width":@((uint32_t)(screen.frame.size.width*screen.backingScaleFactor)),@"physical_height":@((uint32_t)(screen.frame.size.height*screen.backingScaleFactor)),
+        @"logical_width":@((uint32_t)screen.frame.size.width),@"logical_height":@((uint32_t)screen.frame.size.height),
+        @"current_width":@(self.remoteWidth),@"current_height":@(self.remoteHeight),@"refresh_hz":@(hz),
+        @"decode_ms":@(self.lastDecodeDurationMs),
+        @"render_ms":@(self.lastRenderDurationMs),
+        @"hardware":@(atomic_load(&self.decoder->hardware)),@"modes":monitor[@"modes"]?:@[]};
+    NSData *request=[NSJSONSerialization dataWithJSONObject:capabilities options:0 error:NULL];if(!request)return;
+    char *raw=lrd_choose_display_json(request.bytes,request.length);if(!raw)return;
+    NSString *text=[NSString stringWithUTF8String:raw];lrd_free_string(raw);NSData *data=[text dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *mode=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL]:nil;
+    if(![mode isKindOfClass:[NSDictionary class]]||([mode[@"width"] unsignedIntValue]==self.remoteWidth&&[mode[@"height"] unsignedIntValue]==self.remoteHeight))return;
+    [self sendInput:@{@"event":@"Release"}];[self releaseRelativeMouse];self.captureInput=NO;self.awaitingFrame=YES;
+    [self sendControl:@{@"display":@{@"monitor":@(self.currentMonitor),@"mode":mode}}];
+    self.status.stringValue=@"Macの表示サイズと復号負荷に合わせ、Windowsが対応する解像度へ調整しています。切断後は元のモードへ戻します。";
 }
 - (void)windowDidEnterFullScreen:(NSNotification *)notification {
     (void)notification;self.normalVideoFrame=self.videoContainer.frame;

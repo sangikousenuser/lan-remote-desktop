@@ -3,6 +3,7 @@ pub mod channel;
 pub mod clipboard;
 pub mod color;
 pub mod diagnostics;
+pub mod display_choice;
 pub mod file_worker;
 pub mod h264;
 pub mod identity;

@@ -16,7 +16,7 @@
 | 映像 | DXGI staging、NV12、非同期HW H.264 MFT優先＋software fallback、NAL配信、VT/Metal/CPU描画、keyframe要求、静止時の再同期 | GPU surface共有、実HW MFT互換、60fps/低遅延・色・長時間試験 |
 | 入力 | SendInput、JIS/US物理検出、かなON/英数OFF、Command変換、絶対/相対マウス、緊急解放、世代/順序検査、全画面アプリ/動き/入力の継続時に相対モードを案内 | Windows IME/配列/ゲーム別試験。secure desktop/UIPI制約。提案はゲーム識別の保証ではなく、切替はユーザー操作のみ |
 | 再接続 | 120秒、同じ証明書・同じWindows session・secret ticket、TLS鍵/入力世代更新、手動切断抑止、初期化失敗で期限維持、同じMACのNICで再探索、IP/port変更へ追従 | 実際の抜線、NICアドレス変更、121秒、復帰前後の入力試験 |
-| モニター/解像度 | 複数モニター選択、対応モード列挙、Mac物理/論理画素表示、比率維持、変更前journal、条件付き復元、猶予後/再起動時照合 | Windows表示ドライバーごとの変更/強制終了/手動変更試験 |
+| モニター/解像度 | 複数モニター選択、対応モード列挙、Mac物理/論理画素と実測decode/renderから初回モード選択、比率維持、自動調整OFF、変更前journal、条件付き復元、猶予後/再起動時照合 | Windows表示ドライバーごとの変更/強制終了/手動変更試験。自動選択は性能保証ではなく初期推定 |
 | 品質/指標 | encode負荷/RTT/queueのヒステリシス、fps/bitrate制御、受信側工程/欠落/可視状態のfeedback、画面変化/入力頻度、工程時間/転送速度/復帰回数のdashboard、CPU/RAM、7日/100MiBの数値ログと検査済みexport | 実入力→光学表示遅延、GPU使用率のOS別取得、実LANでの調整値検証 |
 | 音声 | WASAPI loopback、PCM多ch縮約、CoreAudio、bounded queue、Windowsのみ/両方、Macのみ制限案内 | Opus、デバイス変更/音映像同期/長時間実測。Windows muteで代用しない |
 | Clipboard | 双方向UTF8/PNG、SHA-256、サイズ/画素制限、反射抑制、停止 | Windows/macOSの各アプリで実動作確認 |
@@ -32,7 +32,7 @@
 
 開発端末: Mac17,9 / Apple M5 Pro、macOS 27.0.1。Rust 1.99.0。Windows x64はMinGW cross build、Intel Mac版はcross build + Rosettaです。
 
-- Rust: common 9件、protocol 14件、session 45件、transport 10件、Mac 5件、合計83件の通常テスト。これにPythonのパッケージ検査3件と公開パイプライン5件を実行。
+- Rust: common 9件、protocol 14件、session 47件、transport 10件、Mac 5件、合計85件の通常テスト。これにPythonのパッケージ検査3件と公開パイプライン5件を実行。
 - セッション試験: 相互TLS・確認コード一致、片側拒否時の両方の登録禁止、別証明書pin拒否、双方向の256KiB×8パケットを8KiB socket bufferで同時送受信、期限/世代/サイズ/パス/署名異常。
 - 別途、ignored指定の1GiB超テストを実行済み。1GiB+123bytesを512チャンクで中断し、Receiverを作り直して残りを受信、全体SHA-256一致。182.47秒。この結果は転送エンジンのローカル試験であり実LAN試験ではありません。
 - Macの実アプリ: Ethernet不在の案内、専用転送画面、ローカル映像、全画面バー、Control+Command+Fによる解除。
@@ -63,3 +63,5 @@ High Sierraでの互換性は最低OSのロードコマンド検査やRosettaで
 `43a779a` の候補workflow（run 39188215876）は3OS・cross-OS codec・更新対象の正確な抽出/recipe/inventory生成まで成功。公開用secretは使っていない。Windowsで発覚したログ容量の数え遅れは、open中の実書き込み量を使って修正し、同runのWindows試験で合格した。
 
 前回Host/既知の鍵の優先表示追加後は通常83件。保存は認証・承認・接続成功後だけ。探索の申告は信頼せず、証明書検証と毎回のMac承認を維持する。常駐監視からも候補選択を表示し、複数Hostを勝手に接続先へ確定しない。
+
+初回自動解像度選択を追加後は85件成功。入力取得の根拠を「復号済み」から「描画完了」へ修正した。hardware decoder非対応はsoftwareへ復帰し、Metalの初期化/command失敗時も入力を解放してCPU描画へ切り替える。softwareで目標GPU性能を達成したとは扱わない。
