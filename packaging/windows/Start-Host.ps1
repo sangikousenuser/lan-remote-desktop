@@ -3,7 +3,12 @@ $ErrorActionPreference = 'Stop'
 $hostExe = Join-Path $PSScriptRoot 'lrd-windows-host.exe'
 Write-Host 'LAN Remote Desktop — Windows Host'
 & $hostExe --interfaces
-$nicIndex = Read-Host 'Ethernetの番号を入力してください'
+$nicIndex = Read-Host 'Ethernetの番号、または一時固定IPの設定・復元は F を入力してください'
+while ($nicIndex -eq 'F') {
+  & $hostExe --network-wizard
+  & $hostExe --interfaces
+  $nicIndex = Read-Host 'Ethernetの番号、または再設定は F を入力してください'
+}
 if ($nicIndex -notmatch '^\d+$' -or [uint32]$nicIndex -eq 0) { throw 'Invalid interface index' }
 Write-Host '初回はMacとWindowsの確認コードが同じことを確かめて、両方で許可してください。'
 Write-Host '終了・ファイル送信・受信フォルダーは通知領域アイコンの右クリックから操作できます。'

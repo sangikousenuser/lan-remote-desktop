@@ -1,6 +1,6 @@
 # 候補ビルド・署名・正式公開
 
-Windows x64とIntel macOS 10.13向けの正式配布経路。現在はalphaで、`packaging/release/gates.json` の `implementation_complete` はfalseのまま。固定IP helper、管理者所有の配置への更新、直接OLE/File Promiseなどの未完了項目を解消するまで正式公開しない。実機受入はユーザーの指定により実装・自動試験後にまとめる。
+Windows x64とIntel macOS 10.13向けの正式配布経路。現在はalphaで、`packaging/release/gates.json` の `implementation_complete` はfalseのまま。管理者所有の配置への更新、直接OLE/File Promiseなどの未完了項目を解消するまで正式公開しない。固定IP helperを同梱するが、実ネットワークの受入合格とは扱わない。実機受入はユーザーの指定により実装・自動試験後にまとめる。
 
 ## 候補を作る
 

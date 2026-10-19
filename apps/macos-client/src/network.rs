@@ -74,6 +74,11 @@ pub extern "C" fn lrd_interfaces_json() -> *mut c_char {
     cstring(&serde_json::to_string(&interfaces).unwrap_or_else(|_| "[]".into())).into_raw()
 }
 #[no_mangle]
+pub extern "C" fn lrd_adapters_json() -> *mut c_char {
+    cstring(&serde_json::to_string(&network::ethernet_adapters()).unwrap_or_else(|_| "[]".into()))
+        .into_raw()
+}
+#[no_mangle]
 pub unsafe extern "C" fn lrd_free_string(string: *mut c_char) {
     if !string.is_null() {
         drop(unsafe { CString::from_raw(string) });

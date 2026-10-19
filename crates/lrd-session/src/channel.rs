@@ -375,12 +375,15 @@ mod tests {
             worker.join().unwrap();
             // This acknowledgement is a bulk-queue barrier. A priority CONFIG
             // may legitimately overtake the last queued FILE on a faster peer.
+            // It can still sit behind the outgoing tail FILE after this peer
+            // finished receiving. Give it the same constrained-transfer budget;
+            // Linux's 8 KiB receive window can make that tail take >5 seconds.
             sender
                 .send_bulk(Packet::json(wire::CONFIG, &42).unwrap())
                 .unwrap();
             assert_eq!(
                 receiver
-                    .recv_timeout(Duration::from_secs(5))
+                    .recv_timeout(Duration::from_secs(15))
                     .unwrap()
                     .parse::<u64>()
                     .unwrap(),

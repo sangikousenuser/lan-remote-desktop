@@ -7,6 +7,7 @@ members = [
     "apps/macos-client",
     "crates/lrd-session",
     "apps/update-helper",
+    "apps/network-helper",
     "crates/lrd-transport",
 ]
 

@@ -108,7 +108,7 @@ def prepare(inputs, output, version, sha, run_id, signer, public):
         root = output / 'roots' / target
         root.mkdir(parents=True)
         if target == WINDOWS:
-            required = {'lrd-windows-host.exe', f'lrd-update-helper-{version}.exe',
+            required = {'lrd-windows-host.exe', f'lrd-update-helper-{version}.exe', f'lrd-network-helper-{version}.exe',
                         'Start-Host.ps1', 'Test-Host.ps1', 'Configure-Firewall.ps1',
                         'manual-testing.md', 'README.txt'}
             members = extract(archive, 'LAN-Remote-Desktop-Windows-Host/', root, required)
@@ -117,7 +117,7 @@ def prepare(inputs, output, version, sha, run_id, signer, public):
             minimum = '10.0.22000'
         else:
             members = extract(archive, 'LAN Remote Desktop.app/', root)
-            required = {'Contents/MacOS/lrd-macos-client', 'Contents/Helpers/lrd-update-helper', 'Contents/Info.plist'}
+            required = {'Contents/MacOS/lrd-macos-client', 'Contents/Helpers/lrd-update-helper', 'Contents/Helpers/lrd-network-helper', 'Contents/Info.plist'}
             if not required.issubset({member['path'] for member in members}):
                 raise ValueError('Mac payload incomplete')
             info = plistlib.loads((root / 'Contents/Info.plist').read_bytes())

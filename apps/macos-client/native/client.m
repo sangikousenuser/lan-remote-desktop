@@ -8,6 +8,7 @@
 #include <math.h>
 #include "audio.inc"
 extern char *lrd_interfaces_json(void);
+extern char *lrd_adapters_json(void);
 extern void lrd_free_string(char *);
 extern void lrd_discover(uint32_t);
 extern void lrd_connect(uint32_t, const char *);
@@ -301,6 +302,7 @@ extern bool lrd_agent_configure(uint32_t index);
 @property CFTimeInterval started;
 @property CFTimeInterval elapsed;
 @property(strong) NSPopUpButton *interfaces;
+@property(strong) NSTimer *ipHelperTimer;
 @property(strong) NSPopUpButton *hosts;
 @property(strong) NSTextField *address;
 @property(strong) id inputMonitor;
@@ -362,6 +364,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
 
 @implementation LRDApplication
 #include "network-ui.inc"
+#include "ip-wizard.inc"
 #include "transfer-ui.inc"
 #include "clipboard-ui.inc"
 #include "display-ui.inc"
@@ -423,6 +426,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     NSMenuItem *openVideo=[appMenu addItemWithTitle:@"検証用の映像ファイルを開く…" action:@selector(choose:) keyEquivalent:@"o"]; openVideo.target=self;
     NSMenuItem *exportLogs=[appMenu addItemWithTitle:@"性能ログを書き出す…" action:@selector(exportLogs:) keyEquivalent:@""];exportLogs.target=self;
     NSMenuItem *dashboard=[appMenu addItemWithTitle:@"性能ダッシュボード…" action:@selector(dashboard:) keyEquivalent:@""];dashboard.target=self;
+    NSMenuItem *networkWizard=[appMenu addItemWithTitle:@"有線LANの一時固定IP設定…" action:@selector(networkWizard:) keyEquivalent:@""];networkWizard.target=self;
     appMenuItem.submenu = appMenu; NSApp.mainMenu = menu;
     NSMenuItem *viewItem = [NSMenuItem new]; [menu addItem:viewItem];
     NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"表示"];
@@ -463,6 +467,7 @@ static NSTextField *label(NSString *text, CGFloat size, BOOL bold) {
     if (self.smoke) [self start:nil];
     if(self.launchAddress){[self.interfaces selectItemWithTag:self.launchInterface];self.address.stringValue=self.launchAddress;[self connect:nil];}
     else if(self.launchDiscovery){[self.interfaces selectItemWithTag:self.launchInterface];[self discover:nil];}
+    if(!self.smoke && !self.launchAddress && !self.launchDiscovery)dispatch_async(dispatch_get_main_queue(),^{[self checkIPRecovery];});
 }
 - (void)fullscreen:(id)sender { (void)sender; [self.window toggleFullScreen:nil]; }
 - (void)choose:(id)sender {

@@ -4,6 +4,7 @@ mod clipboard;
 mod display;
 mod encoder;
 mod input;
+mod network_ui;
 mod remote;
 mod stream_encoder;
 mod tray;
@@ -60,6 +61,12 @@ pub fn run() -> Result<()> {
         }
     }
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args == ["--network-wizard"] {
+        return network_ui::wizard(windows::Win32::Foundation::HWND::default());
+    }
+    if args.is_empty() || args.iter().any(|a| a == "--serve") {
+        network_ui::offer_recovery();
+    }
     if args.is_empty() {
         return remote::run(&["--serve".into(), "--auto".into()]);
     }

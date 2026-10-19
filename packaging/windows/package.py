@@ -42,6 +42,11 @@ def main():
     version = versions[0]
     base_version = version.split('-')[0].split('+')[0]
     shutil.copy2(helper, folder / f'lrd-update-helper-{version}.exe')
+    network_helper = binary.with_name('lrd-network-helper.exe')
+    if not network_helper.is_file():
+        parser.error('build lrd-network-helper for the same Windows target first')
+    verify(network_helper)
+    shutil.copy2(network_helper, folder / f'lrd-network-helper-{version}.exe')
     for name in ['Test-Host.ps1', 'Start-Host.ps1', 'Configure-Firewall.ps1']:
         source = ROOT / 'packaging/windows' / name
         (folder / name).write_text(source.read_text(encoding='utf-8-sig'), encoding='utf-8-sig')
@@ -56,6 +61,8 @@ def main():
         '          lrd-windows-host.exe --serve --interface INDEX --auto\n'
         'Firewallに遮られる場合はmanual-testing.mdの限定規則を参照してください。\n'
         '通常のHostは管理者権限を必要としません。固定IP/DNS/経路は変更しません。\n'
+        'DHCP/Link-Localで接続できない場合はStart-Host.ps1で F、または通知領域の一時固定IP設定を選びます。\n'
+        '選択Ethernetの一時IP追加・復元だけを別helperがUAC承認後に行います。\n'
         '正式版の全要件は未完了です。実装状況は同梱手順とソースdocsを参照してください。\n', encoding='utf-8-sig')
     archive = ROOT / 'dist/LAN-Remote-Desktop-Windows-Host.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as output:

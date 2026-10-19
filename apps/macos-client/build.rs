@@ -8,6 +8,7 @@ fn run(command: &mut Command) {
 fn main() {
     println!("cargo:rerun-if-changed=native/client.m");
     println!("cargo:rerun-if-changed=native/network-ui.inc");
+    println!("cargo:rerun-if-changed=native/ip-wizard.inc");
     println!("cargo:rerun-if-changed=native/transfer-ui.inc");
     println!("cargo:rerun-if-changed=native/audio.inc");
     println!("cargo:rerun-if-changed=native/display-ui.inc");

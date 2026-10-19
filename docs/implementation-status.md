@@ -25,14 +25,14 @@
 | 常駐/配布 | Windows tray/専用転送画面、同一NICで待受再構築、NSIS Per-user/Per-machine、任意のログイン時起動、Mac LaunchAgent登録/解除、.app/ZIP | 両Windowsモードのインストール/アンインストール実機、High Sierra LaunchAgent |
 | 更新 | HTTPS取得、埋込みEd25519署名、Stable/CPU/OS/protocol/hash/パス検査、private staging、次回起動helper、backup/journal、起動応答/生存監視、失敗復元、失敗版blocklist、候補bytes/実機申告照合→Environment承認→署名/検証→draft hash照合/公開workflow | 管理者所有の配置への権限分離・実際の2版アプリでの更新試験。Stableは未公開、公開ゲートfalse |
 | Q50 | QUIC DATAGRAM/TLS+AEAD UDPの両候補、相互認証/両端承認、本体の映像/音声/入力/転送/再開へ接続、通信方式メニュー、暗号/replay/世代検査、共通比較CLI | 実Ethernet性能/損失/長時間と最終方式選定。live既定はTLS/TCP |
-| 固定IP | OSのDHCP/Link-Localを利用。Firewall限定設定スクリプトを同梱 | 狭い管理者helper、snapshot/rollback、衝突検出、両端ローカルウィザード |
+| 固定IP | 両端のローカルウィザード、都度OS承認の限定helper、MAC/index照合、/30重複経路拒否、Mac ARP probe / Windows DAD、変更前snapshot、一時aliasのみ追加、抜線/取消/12時間/次回起動で復元 | OS承認UI、実際の衝突・抜線・DHCP/再起動・Wi-Fi/DNS保持を最後の実機受入で確認 |
 | CI/正式公開 | Public repo、3OS fmt/clippy/tests/buildとWindows NSIS/Intel .app生成成功、alpha取得可能、正式公開を拒否するゲート | 追加変更のActions検証、実機ゲート、署名公開workflowの完成 |
 
 ## ローカルで確認したこと
 
 開発端末: Mac17,9 / Apple M5 Pro、macOS 27.0.1。Rust 1.99.0。Windows x64はMinGW cross build、Intel Mac版はcross build + Rosettaです。
 
-- Rust: common 9件、protocol 14件、session 49件、transport 10件、Mac 5件、Macでは合計87件の通常テスト。これにPythonのMacパッケージ検査3件・Windows PE検査4件・公開パイプライン5件を実行。
+- Rust: common 9件、protocol 14件、session 49件、transport 10件、Mac 5件、network helper 8件、Macでは合計95件の通常テスト。これにPythonのMacパッケージ検査3件・Windows PE検査4件・公開パイプライン5件を実行。
 - セッション試験: 相互TLS・確認コード一致、片側拒否時の両方の登録禁止、別証明書pin拒否、双方向の256KiB×8パケットを8KiB socket bufferで同時送受信、期限/世代/サイズ/パス/署名異常。
 - 別途、ignored指定の1GiB超テストを実行済み。1GiB+123bytesを512チャンクで中断し、Receiverを作り直して残りを受信、全体SHA-256一致。182.47秒。この結果は転送エンジンのローカル試験であり実LAN試験ではありません。
 - Macの実アプリ: Ethernet不在の案内、専用転送画面、ローカル映像、全画面バー、Control+Command+Fによる解除。
@@ -46,7 +46,7 @@ High Sierraでの互換性は最低OSのロードコマンド検査やRosettaで
 ## 次の受入ゲート
 
 新しいWindows ZIPの `Start-Host.ps1` とMacアプリで実際に接続し、初回承認→映像/入力→音声/clipboard→抜線復帰→モニター変更→両方向転送を確認します。[手順](manual-testing.md)に結果欄を定義しています。
-ユーザー指定により、実機受入は全機能の実装と自動試験後にまとめて行います。固定IP helper、更新の管理者経路、直接OLE/File Promise転送などの残り実装を実機試験待ちにせず進めます。Q50の最終方式選定と正式公開は最後の受入後です。
+ユーザー指定により、実機受入は全機能の実装と自動試験後にまとめて行います。固定IP helperは実装と自動試験を追加済みです。更新の管理者経路、直接OLE/File Promise転送などの残り実装を実機試験待ちにせず進めます。Q50の最終方式選定と正式公開は最後の受入後です。
 
 ## GitHub公開
 

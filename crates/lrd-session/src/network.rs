@@ -85,7 +85,7 @@ pub struct Nic {
     pub prefix: u8,
     pub mac: String,
 }
-fn wired(i: &Interface) -> bool {
+fn ethernet(i: &Interface) -> bool {
     matches!(
         i.if_type,
         InterfaceType::Ethernet
@@ -93,8 +93,10 @@ fn wired(i: &Interface) -> bool {
             | InterfaceType::FastEthernetFx
             | InterfaceType::GigabitEthernet
     ) && !i.is_loopback()
-        && i.is_up()
         && physical(i)
+}
+fn wired(i: &Interface) -> bool {
+    ethernet(i) && i.is_up() && media_active(i)
 }
 #[cfg(windows)]
 fn physical(i: &Interface) -> bool {
@@ -104,23 +106,91 @@ fn physical(i: &Interface) -> bool {
         ..Default::default()
     };
     unsafe {
-        GetIfEntry2(&mut row).is_ok()
-            && row.InterfaceAndOperStatusFlags._bitfield & 0b101 == 0b101
-            && row.InterfaceAndOperStatusFlags._bitfield & 0b10000 == 0
+        GetIfEntry2(&mut row).is_ok() && row.InterfaceAndOperStatusFlags._bitfield & 0b101 == 0b101
+    }
+}
+#[cfg(windows)]
+fn media_active(i: &Interface) -> bool {
+    use windows::Win32::NetworkManagement::IpHelper::{GetIfEntry2, MIB_IF_ROW2};
+    let mut row = MIB_IF_ROW2 {
+        InterfaceIndex: i.index,
+        ..Default::default()
+    };
+    unsafe {
+        GetIfEntry2(&mut row).is_ok() && row.InterfaceAndOperStatusFlags._bitfield & 0b10000 == 0
     }
 }
 #[cfg(not(windows))]
+fn media_active(i: &Interface) -> bool {
+    link_active(&i.name)
+}
+#[cfg(all(not(windows), not(target_os = "macos")))]
 fn physical(i: &Interface) -> bool {
     i.is_physical()
-        && (cfg!(not(target_os = "macos"))
-            || (i.name.starts_with("en") && mac_link_active(&i.name)))
+}
+#[cfg(target_os = "macos")]
+fn physical(i: &Interface) -> bool {
+    // netdev's Darwin physical predicate requires IFF_RUNNING, so it cannot
+    // identify an unplugged NIC for restoration. Check its hardware provider
+    // independently of link state; bridges/tunnels have no such provider.
+    use std::ffi::{c_char, c_void, CString};
+    #[link(name = "IOKit", kind = "framework")]
+    unsafe extern "C" {
+        fn IOBSDNameMatching(port: u32, options: u32, name: *const c_char) -> *mut c_void;
+        fn IOServiceGetMatchingService(port: u32, matching: *mut c_void) -> u32;
+        fn IOObjectConformsTo(object: u32, class: *const c_char) -> u8;
+        fn IORegistryEntryGetParentEntry(entry: u32, plane: *const c_char, parent: *mut u32)
+            -> i32;
+        fn IOObjectRelease(object: u32) -> i32;
+    }
+    if !i.name.starts_with("en") {
+        return false;
+    }
+    let Ok(name) = CString::new(i.name.as_str()) else {
+        return false;
+    };
+    unsafe {
+        let matching = IOBSDNameMatching(0, 0, name.as_ptr());
+        if matching.is_null() {
+            return false;
+        }
+        let mut object = IOServiceGetMatchingService(0, matching);
+        if object == 0 {
+            return false;
+        }
+        if IOObjectConformsTo(object, c"IOEthernetInterface".as_ptr()) == 0 {
+            IOObjectRelease(object);
+            return false;
+        }
+        for _ in 0..32 {
+            let hardware = IOObjectConformsTo(object, c"IOPCIDevice".as_ptr()) != 0
+                || IOObjectConformsTo(object, c"IOUSBHostDevice".as_ptr()) != 0
+                || IOObjectConformsTo(object, c"IOUSBDevice".as_ptr()) != 0;
+            let mut parent = 0;
+            let result = if hardware {
+                0
+            } else {
+                IORegistryEntryGetParentEntry(object, c"IOService".as_ptr(), &mut parent)
+            };
+            IOObjectRelease(object);
+            if hardware {
+                return true;
+            }
+            if result != 0 || parent == 0 {
+                return false;
+            }
+            object = parent;
+        }
+        IOObjectRelease(object);
+        false
+    }
 }
 #[cfg(all(not(target_os = "macos"), not(windows)))]
-fn mac_link_active(_name: &str) -> bool {
+fn link_active(_name: &str) -> bool {
     true
 }
 #[cfg(target_os = "macos")]
-fn mac_link_active(name: &str) -> bool {
+fn link_active(name: &str) -> bool {
     use std::{
         ffi::{c_char, c_void, CString},
         ptr::null,
@@ -171,6 +241,32 @@ fn mac_link_active(name: &str) -> bool {
         CFRelease(value);
         result
     }
+}
+/// Physical Ethernet inventory also includes down/unconfigured adapters for
+/// the local IP wizard. Remote sockets still require `interfaces()`/Nic checks.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Adapter {
+    pub index: u32,
+    pub name: String,
+    pub label: String,
+    pub mac: String,
+    pub active: bool,
+    pub addresses: Vec<(Ipv4Addr, u8)>,
+}
+pub fn ethernet_adapters() -> Vec<Adapter> {
+    netdev::get_interfaces()
+        .into_iter()
+        .filter(ethernet)
+        .filter(|i| i.mac_addr.is_some())
+        .map(|i| Adapter {
+            index: i.index,
+            name: i.name.clone(),
+            label: i.friendly_name.clone().unwrap_or_else(|| i.name.clone()),
+            mac: i.mac_addr.map(|m| m.to_string()).unwrap_or_default(),
+            active: i.is_up() && media_active(&i),
+            addresses: i.ipv4.iter().map(|n| (n.addr(), n.prefix_len())).collect(),
+        })
+        .collect()
 }
 pub fn interfaces() -> Vec<Nic> {
     netdev::get_interfaces()

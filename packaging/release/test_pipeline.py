@@ -30,11 +30,11 @@ class PipelineTests(unittest.TestCase):
         (inputs / 'windows').mkdir(parents=True)
         (inputs / 'macos').mkdir()
         with zipfile.ZipFile(inputs / 'windows/LAN-Remote-Desktop-Windows-Host.zip', 'w') as archive:
-            for name in ('lrd-windows-host.exe', 'lrd-update-helper-1.2.3.exe', 'Start-Host.ps1',
+            for name in ('lrd-windows-host.exe', 'lrd-update-helper-1.2.3.exe', 'lrd-network-helper-1.2.3.exe', 'Start-Host.ps1',
                          'Test-Host.ps1', 'Configure-Firewall.ps1', 'manual-testing.md', 'README.txt'):
                 archive.writestr('LAN-Remote-Desktop-Windows-Host/' + name, b'fixture only')
         with zipfile.ZipFile(inputs / 'macos/LAN-Remote-Desktop-macOS-client.zip', 'w') as archive:
-            for name in ('Contents/MacOS/lrd-macos-client', 'Contents/Helpers/lrd-update-helper'):
+            for name in ('Contents/MacOS/lrd-macos-client', 'Contents/Helpers/lrd-update-helper', 'Contents/Helpers/lrd-network-helper'):
                 archive.writestr('LAN Remote Desktop.app/' + name, b'fixture only')
             archive.writestr('LAN Remote Desktop.app/Contents/Info.plist', plistlib.dumps({
                 'LRDVersion': '1.2.3', 'LSMinimumSystemVersion': '10.13'}))

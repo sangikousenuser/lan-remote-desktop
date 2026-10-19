@@ -164,6 +164,7 @@ unsafe extern "system" fn proc(
                     (6, "切断 / 接続猶予を終了"),
                     (7, "新しい接続の許可を切り替え"),
                     (10, "性能ログを書き出す…"),
+                    (11, "有線LANの一時固定IP設定…"),
                     (8, "Hostを終了"),
                 ] {
                     AppendMenuW(menu, MF_STRING, id, &HSTRING::from(title))?;
@@ -219,6 +220,7 @@ unsafe extern "system" fn proc(
                         open_transfer()?;
                     }
                     10 => export_logs(window)?,
+                    11 => super::network_ui::wizard(window)?,
                     5 => remote::cancel_files(),
                     6 => remote::disconnect(),
                     7 => remote::toggle_accepting(),

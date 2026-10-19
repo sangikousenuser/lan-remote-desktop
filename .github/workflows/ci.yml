@@ -62,6 +62,11 @@ jobs:
           LRD_RELEASE_TOOL: target/debug/examples/lrd-release-tool
       - name: Compile release applications
         run: cargo build --locked --workspace --release
+      - name: Read Ethernet wizard inventory without authorization or mutations
+        run: cargo run --locked --release -p lrd-network-helper -- --interfaces
+      - name: Read network helper status without authorization
+        if: runner.os != 'Linux'
+        run: cargo run --locked --release -p lrd-network-helper -- --status
       - name: Initialize Windows process and enumerate Ethernet
         if: runner.os == 'Windows'
         run: target/release/lrd-windows-host.exe --interfaces
