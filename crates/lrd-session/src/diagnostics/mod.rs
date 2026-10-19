@@ -331,22 +331,26 @@ pub fn record(mut sample: Sample) {
         LOST.fetch_add(1, Ordering::Relaxed);
         return;
     }
+    // Capture the observation before disk I/O. A blocked logger must neither
+    // freeze the dashboard nor turn queued old samples into fresh measurements.
+    sample.unix_ms = clock_ms();
+    static METER: OnceLock<std::sync::Mutex<resources::Meter>> = OnceLock::new();
+    if let Ok(mut meter) = METER.get_or_init(Default::default).try_lock() {
+        let resource = meter.sample();
+        sample.cpu_percent = sample.cpu_percent.or(resource.cpu_percent);
+        sample.resident_bytes = sample.resident_bytes.or(resource.resident_bytes);
+        sample.peak_resident_bytes = sample.peak_resident_bytes.or(resource.peak_resident_bytes);
+    }
+    if let Ok(mut latest) = LATEST.get_or_init(Default::default).lock() {
+        *latest = sample.clone();
+    }
     static LOGGER: OnceLock<SyncSender<Sample>> = OnceLock::new();
     let logger = LOGGER.get_or_init(|| {
         let (tx, rx) = mpsc::sync_channel::<Sample>(32);
         std::thread::spawn(move || {
             let mut store = None;
-            let mut meter = resources::Meter::default();
             let mut retry = std::time::Instant::now();
-            while let Ok(mut sample) = rx.recv() {
-                sample.unix_ms = clock_ms();
-                let resource = meter.sample();
-                sample.cpu_percent = resource.cpu_percent;
-                sample.resident_bytes = resource.resident_bytes;
-                sample.peak_resident_bytes = resource.peak_resident_bytes;
-                if let Ok(mut latest) = LATEST.get_or_init(Default::default).lock() {
-                    *latest = sample.clone();
-                }
+            while let Ok(sample) = rx.recv() {
                 if store.is_none() && std::time::Instant::now() >= retry {
                     store = (|| -> Result<Store> {
                         let directory = identity::data_directory()?;
@@ -372,7 +376,6 @@ pub fn record(mut sample: Sample) {
         });
         tx
     });
-    sample.unix_ms = 0;
     if logger.try_send(sample).is_err() {
         LOST.fetch_add(1, Ordering::Relaxed);
     }

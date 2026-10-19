@@ -7,6 +7,7 @@
 - 実装済み: RTT、capture処理/encode/同期decode/render完了時間、capture/decode/render FPS、codecのhardware選択、送受信byte、queue/drop/error、プロセスCPU、resident/peak memory。CPU 100%は1コア相当。GPU使用率や入力→表示遅延を推定して表示しない。
 - `transport_bitrate_bps`はtransportへ渡したアプリデータ量（media headerを含む）の差分。暗号/TCP/IP overheadを含む物理回線bitrateではない。codecの要求値は別の`encoder_target_bitrate_bps`。
 - 数値ログは非同期・bounded queue（32件）。ディスクが遅い/満杯でもセッションを待たせず、取りこぼし件数を表示する。
+- 最新snapshot・観測時刻・プロセス資源値はqueueへ渡す前に更新する。ログwriterの停止や書き込み遅延でdashboardが止まったり、古い観測が後から新しい時刻になることを防ぐ。
 - 既定7日、合計100MiB、segment 1MiB。所有者専用ディレクトリ/ファイルを使い、期限/容量超過の管理対象segmentだけを削除する。無関係のファイルやsymlinkは削除/追跡しない。
 - macOSは映像欄へCPU/RAMを追加、Windowsは通知領域の接続情報へ数値を表示する。両端に「性能ログを書き出す…」を追加する。
 - 書き出し時にJSONLを数値型へ再parseし、不明フィールド・文字列・破損末尾を除外する。最大100MiBで打ち切り、除外数/打切りflagを付ける。アプリの秘密鍵/設定領域への書き出しは拒否する。
